@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CELLS, calculateJackpots, legacyJackpots, parseBankroll, START_BALANCE } from './config'
 import { calculateOrbPrize } from './orbPrizes'
 import type { Scenario } from './engine'
-import { dismissResult, lastWinSen, newSession, openBonus, resetGame, resetStats, revealRespin, revealSpin,
+import { completeHoldCollection, dismissResult, lastWinSen, newSession, openBonus, resetGame, resetStats, revealRespin, revealSpin,
   selectBetting, setBankroll, startRespin, startSpin } from './session'
 import type { Session } from './session'
 import { parseSession } from './storage'
@@ -35,6 +35,18 @@ describe('round transitions and persistence', () => {
     expect(idle.round.phase).toBe('IDLE')
     expect(startSpin(idle, rng, 'test')).toBe(idle)
     expect(reload(selectBetting(idle, { lines: 18 })).betting).toEqual({ denominationSen: 20, betSize: 3, lines: 18 })
+  })
+
+  it('retains the original paytable on a spin saved before the symbol update', () => {
+    const active = begin('none')
+    if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
+    const { paytableVersion, ...previous } = active.round.spin
+    expect(paytableVersion).toBe(2)
+    const board = previous.board.map((symbol, position) => position % 3 === 1 ? 'J' as const : symbol)
+    const original = reload({ ...active, round: { ...active.round, spin: { ...previous, board } } })
+    expect(revealSpin(original, 'test').last?.line).toBe(35)
+    const updated = reload({ ...active, round: { ...active.round, spin: { ...active.round.spin, board } } })
+    expect(revealSpin(updated, 'test').last?.line).toBe(22)
   })
 
   it.each(['six', 'seven', 'mini', 'minor', 'major'] as const)('saves every intermediate %s bonus state', scenario => {
@@ -75,15 +87,21 @@ describe('round transitions and persistence', () => {
     expect(setBankroll(state, 999, 'reset')).toBe(state)
     expect(revealRespin(state, 'test', 1)).toBe(state)
     expect(openBonus(state, 'test')).toBe(state)
-    expect(dismissResult(state, 'test').balance).toBe(state.balance)
+    expect(dismissResult(state, 'test')).toBe(state)
+    expect(completeHoldCollection(state, 'stale')).toBe(state)
+    const collected = reload(completeHoldCollection(state, 'test:bonus'))
+    expect(completeHoldCollection(collected, 'test:bonus')).toBe(collected)
+    expect(collected.balance).toBe(state.balance)
+    expect(collected.stats).toEqual(state.stats)
+    expect(dismissResult(collected, 'test').round.phase).toBe('IDLE')
   })
 
   it('includes any triggering line wins in the same final bonus settlement', () => {
     let draws = 0
-    const state = startSpin(funded(), () => draws++ < CELLS || draws % 2 === 1 ? 0.999 : 0.5, 'test')
+    const state = startSpin(funded(), () => draws++ < CELLS || draws % 2 === 1 ? 0.999999 : 0.5, 'test')
     if (state.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
     // Replace one full row with a paying symbol while retaining ten production orbs.
-    state.round.spin.board = state.round.spin.board.map((symbol, i) => i % 3 === 1 ? 'dragon' : symbol)
+    state.round.spin.board = state.round.spin.board.map((symbol, i) => i % 3 === 1 ? 'tiger' : symbol)
     state.round.orbs = state.round.orbs!.map((orb, i) => i % 3 === 1 ? null : orb)
     let active = openBonus(revealSpin(reload(state), 'test'), 'test')
     for (let turn = 1; turn <= 3; turn++) active = revealRespin(startRespin(active, rng), 'test', turn)
@@ -210,11 +228,13 @@ describe('round transitions and persistence', () => {
       }
       return active
     }
-    const bonus = bonusAt(missed, 'first-bonus')
+    const collection = bonusAt(missed, 'first-bonus')
+    expect(lastWinSen(collection)).toBe(0)
+    const bonus = completeHoldCollection(collection, 'first-bonus:bonus')
     expect(lastWinSen(bonus)).toBe(6 * 16 * 10)
     const changed = selectBetting(dismissResult(bonus, 'first-bonus'), { denominationSen: 20, betSize: 3, lines: 88 })
     expect(lastWinSen(changed)).toBe(lastWinSen(bonus))
-    expect(lastWinSen(bonusAt(changed, 'second-bonus'))).toBe(6 * 16 * 3 * 20)
+    expect(lastWinSen(completeHoldCollection(bonusAt(changed, 'second-bonus'), 'second-bonus:bonus'))).toBe(6 * 16 * 3 * 20)
   })
 
   it('keeps orb and jackpot amounts independent of lines at spin time', () => {

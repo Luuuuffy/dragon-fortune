@@ -1,9 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
-import { newSession, setBankroll, startSpin } from '../game/session'
+import { newSession, openBonus, revealRespin, revealSpin, setBankroll, startRespin, startSpin } from '../game/session'
 import { App } from './App'
 import { Bankroll } from './Bankroll'
 import { OrbSymbol } from './Symbol'
+import { dragonPath, dragonPoint, holdCollectionPrizes } from './HoldCollection'
 import { createSpinId } from './spinId'
 
 const { current } = vi.hoisted(() => ({ current: { session: null as unknown } }))
@@ -11,7 +12,7 @@ vi.mock('../game/useSession', () => ({
   useSession: () => ({ session: current.session, action: vi.fn(), commit: vi.fn() }),
 }))
 vi.mock('./useRoundAnimation', () => ({
-  useRoundAnimation: () => ({ stopped: [], duration: [], landedSymbols: [] }),
+  useRoundAnimation: () => ({ stopped: [], duration: [], landedSymbols: [], stoppedCells: [] }),
 }))
 
 it('renders each ordinary face number in the orb and keeps jackpot names', () => {
@@ -57,4 +58,34 @@ it('can identify a paid spin over local HTTP without the secure-context UUID API
   const funded = setBankroll(newSession(), 100_000, 'initial')
   expect(id).toBe('000000000000001f000000ffffffffff')
   expect(startSpin(funded, () => 0.8, id).round).toMatchObject({ phase: 'SPINNING', spin: { id } })
+})
+
+it('spins only empty cells and derives one flight per stored orb, with GRAND last', () => {
+  const rng = () => 0.99
+  const funded = setBankroll(newSession(), 100_000, 'initial')
+  const ready = openBonus(revealSpin(startSpin(funded, rng, 'grand', 'grand'), 'grand'), 'grand')
+  const turn = startRespin(ready, rng)
+  current.session = turn
+  const rendered = renderToStaticMarkup(<App/>)
+  expect(rendered.match(/class="cell-mini-reel"/g)).toHaveLength(1)
+  expect(rendered.match(/data-orb-position=/g)).toHaveLength(14)
+
+  const settled = revealRespin(turn, 'grand', 1)
+  if (settled.round.phase !== 'JACKPOT_CELEBRATION' || !settled.round.orbs) throw new Error('Expected GRAND')
+  const prizes = holdCollectionPrizes(settled.round.orbs, settled.round.result)
+  expect(prizes.slice(0, 5).map(prize => prize.position)).toEqual([0, 3, 6, 9, 12])
+  expect(new Set(prizes.map(prize => prize.position)).size).toBe(16)
+  expect(prizes.at(-1)).toEqual({ tier: 'grand', position: null, amount: 20_000_000 })
+  expect(prizes.reduce((sum, prize) => sum + prize.amount, 0)).toBe(settled.round.result.total)
+  current.session = settled
+  expect(renderToStaticMarkup(<App/>)).toContain('BONUS WIN <strong>RM 0.00</strong>')
+})
+
+it('anchors the curved dragon path to both measured points after a resize', () => {
+  for (const [start, counter] of [[{ x: 530, y: 320 }, { x: 670, y: 15 }], [{ x: 270, y: 190 }, { x: 245, y: 28 }]]) {
+    const path = dragonPath(start, counter)
+    expect(dragonPoint(path, 0)).toEqual(start)
+    expect(dragonPoint(path, 1)).toEqual(counter)
+    expect(dragonPoint(path, .5).y).toBeLessThan((start.y + counter.y) / 2)
+  }
 })

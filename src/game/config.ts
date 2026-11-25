@@ -28,7 +28,8 @@ export function calculateJackpots(denominationSen: number): JackpotPrizes {
 export const legacyJackpots = (bet: number): JackpotPrizes =>
   ({ mini: 625 * bet, minor: 1250 * bet, major: 12500 * bet, grand: 125000 * bet })
 
-export const SYMBOLS = {
+// These prices remain valid for boards already committed by older versions.
+export const LEGACY_SYMBOLS = {
   dragon: { name: 'Golden Dragon', pays: [18, 65, 200] },
   phoenix: { name: 'Red Phoenix', pays: [15, 45, 150] },
   ingot: { name: 'Gold Ingot', pays: [10, 35, 100] },
@@ -43,8 +44,22 @@ export const SYMBOLS = {
   orb: { name: 'Gold Orb', pays: null },
   lantern: { name: 'Red Lantern Scatter', pays: null },
 } as const
-export type SymbolId = keyof typeof SYMBOLS
-export const WILD_RULES = { substitutes: true, payOwnCombinations: true }
+export const SYMBOLS = {
+  '9': { name: 'Nine', pays: [2, 5, 15] },
+  '10': { name: 'Ten', pays: [2, 6, 18] },
+  J: { name: 'Jack', pays: [3, 8, 22] },
+  Q: { name: 'Queen', pays: [3, 10, 25] },
+  K: { name: 'King', pays: [4, 12, 30] },
+  chicken: { name: 'Chicken', pays: [5, 20, 60] },
+  boat: { name: 'Boat', pays: [6, 25, 80] },
+  lotus: { name: 'Lotus Flower', pays: [8, 30, 100] },
+  tiger: { name: 'Tiger', pays: [10, 50, 200] },
+  wild: { name: 'Panda Wild', pays: null },
+  orb: LEGACY_SYMBOLS.orb,
+  lantern: LEGACY_SYMBOLS.lantern,
+} as const
+export const BOARD_SYMBOLS = { ...LEGACY_SYMBOLS, ...SYMBOLS }
+export type SymbolId = keyof typeof BOARD_SYMBOLS
 export const PAYLINES = [
   [1, 1, 1, 1, 1], [0, 0, 0, 0, 0], [2, 2, 2, 2, 2], [0, 1, 2, 1, 0], [2, 1, 0, 1, 2],
   [0, 0, 1, 2, 2], [2, 2, 1, 0, 0], [1, 0, 0, 0, 1], [1, 2, 2, 2, 1], [0, 1, 1, 1, 0],

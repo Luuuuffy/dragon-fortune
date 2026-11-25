@@ -1,5 +1,5 @@
 import { BET_SIZES, DEFAULT_BETTING, DENOMINATIONS_SEN, JACKPOT_TIERS, LINE_OPTIONS, MAX_INITIAL_BANKROLL,
-  SYMBOLS, betPerLineSen, calculateJackpots, legacyJackpots, totalBetSen } from './config'
+  BOARD_SYMBOLS, betPerLineSen, calculateJackpots, legacyJackpots, totalBetSen } from './config'
 import { BONUS } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
 import { evaluateLines, evaluateScatter, freeSpinScenario, generateBoard, legacyLinePayout, respin, sampleBoard, sampleOrbs,
@@ -25,7 +25,7 @@ export type Stats = {
 }
 // A null betting snapshot identifies a pending round carried forward from version 1.
 type Spin = { id: string; bet: number; lines: number; betting: Betting | null;
-  jackpotPrizes?: JackpotPrizes; board: SymbolId[]; scenario?: Scenario }
+  jackpotPrizes?: JackpotPrizes; board: SymbolId[]; scenario?: Scenario; paytableVersion?: 2 }
 export const spinJackpots = (spin: Pick<Spin, 'jackpotPrizes' | 'bet'>) =>
   spin.jackpotPrizes ?? legacyJackpots(spin.bet)
 const spinOrbWager = (spin: Spin) => ({
@@ -58,9 +58,9 @@ export type Round =
   | { phase: 'SPINNING'; spin: Spin; orbs: Slots }
   | { phase: 'BONUS_TRIGGER' | 'BONUS_READY' | 'BONUS_RESPIN'; bonus: Bonus }
   | { phase: 'FREE_INTRO' | 'FREE_WAIT'; spinId: string; outcome: SpinOutcome; extra: number }
-  | { phase: 'FEATURE_HOLD_RESULT'; holdResult: Result; orbs: Slots }
+  | { phase: 'FEATURE_HOLD_RESULT'; holdResult: Result; orbs: Slots; collectionComplete?: true }
   | { phase: 'FREE_COMPLETE'; result: Result }
-  | { phase: 'LINE_WIN' | 'BONUS_RESULT' | 'JACKPOT_CELEBRATION'; result: Result; orbs: Slots | null }
+  | { phase: 'LINE_WIN' | 'BONUS_RESULT' | 'JACKPOT_CELEBRATION'; result: Result; orbs: Slots | null; collectionComplete?: true }
 
 export type Session = {
   version: 5
@@ -93,7 +93,9 @@ export function newSession(): Session {
 }
 
 export const lastWinSen = ({ round, last, freeSpins }: Session) =>
-  (freeSpins && round.phase !== 'FREE_COMPLETE') || 'spin' in round || 'bonus' in round ? 0 : last?.total ?? 0
+  (freeSpins && round.phase !== 'FREE_COMPLETE') || 'spin' in round || 'bonus' in round ||
+  ((round.phase === 'BONUS_RESULT' || round.phase === 'JACKPOT_CELEBRATION') && !round.collectionComplete)
+    ? 0 : last?.total ?? 0
 
 export const validBetting = (betting: Betting) =>
   DENOMINATIONS_SEN.some(value => value === betting.denominationSen) &&
@@ -111,7 +113,7 @@ export function startSpin(session: Session, rng: Random, id: string, scenario?: 
   if (session.round.phase !== 'IDLE' || session.initialBankroll === null || balance < bet ||
       session.last?.spinId === id || scenario === 'insufficient') return session
   const board = generateBoard(rng, scenario)
-  const spin = { id, bet, lines: betting.lines, betting: { ...betting },
+  const spin = { id, bet, lines: betting.lines, betting: { ...betting }, paytableVersion: 2 as const,
     jackpotPrizes: calculateJackpots(betting.denominationSen), board, scenario }
   const orbs = startingOrbs(board, rng, spinOrbWager(spin), scenario)
   return {
@@ -122,7 +124,8 @@ export function startSpin(session: Session, rng: Random, id: string, scenario?: 
 }
 
 function spinOutcome(spin: Spin): SpinOutcome {
-  const { wins, amount } = evaluateLines(spin.board, spin.betting ? betPerLineSen(spin.betting) : spin.bet, spin.lines)
+  const { wins, amount } = evaluateLines(spin.board, spin.betting ? betPerLineSen(spin.betting) : spin.bet, spin.lines,
+    spin.paytableVersion === undefined)
   // Only migrated rounds use the former rule of rounding the aggregate fractional line payout.
   const line = spin.betting ? amount : legacyLinePayout(amount, spin.lines)
   const scatter = evaluateScatter(spin.board, spin.bet)
@@ -235,9 +238,18 @@ export function freeTransitionId(round: Round): string | null {
   return null
 }
 
+export function completeHoldCollection(session: Session, id: string): Session {
+  const { round } = session
+  if (round.phase !== 'FEATURE_HOLD_RESULT' && round.phase !== 'BONUS_RESULT' && round.phase !== 'JACKPOT_CELEBRATION') return session
+  const result = round.phase === 'FEATURE_HOLD_RESULT' ? round.holdResult : round.result
+  if (result.bonusId !== id || round.collectionComplete) return session
+  return { ...session, round: { ...round, collectionComplete: true } }
+}
+
 export function advanceFreeSpins(session: Session, phase: Round['phase'], id: string, rng: Random): Session {
   const feature = session.freeSpins
   if (!feature || session.round.phase !== phase || freeTransitionId(session.round) !== id) return session
+  if (session.round.phase === 'FEATURE_HOLD_RESULT' && !session.round.collectionComplete) return session
   if (phase === 'FREE_COMPLETE') return { ...session, freeSpins: null, round: { phase: 'IDLE' } }
   if (feature.nextHold) {
     return beginHold({ ...session, freeSpins: { ...feature, nextHold: null } }, feature.nextHold)
@@ -246,7 +258,7 @@ export function advanceFreeSpins(session: Session, phase: Round['phase'], id: st
     const number = feature.awarded - feature.remaining + 1
     const scenario = freeSpinScenario(feature.root.scenario, number)
     const board = generateBoard(rng, scenario, true)
-    const spin = { ...feature.root, id: `${feature.root.id}:free:${number}`, board, scenario }
+    const spin = { ...feature.root, id: `${feature.root.id}:free:${number}`, board, scenario, paytableVersion: 2 as const }
     return {
       ...session, stats: { ...session.stats, freePlayed: session.stats.freePlayed + 1 },
       freeSpins: { ...feature, remaining: feature.remaining - 1 },
@@ -310,6 +322,8 @@ export function revealRespin(session: Session, id: string, turn: number): Sessio
 
 export function dismissResult(session: Session, id: string): Session {
   if (session.freeSpins || !('result' in session.round) || session.round.result.spinId !== id) return session
+  if ((session.round.phase === 'BONUS_RESULT' || session.round.phase === 'JACKPOT_CELEBRATION') &&
+      !session.round.collectionComplete) return session
   return { ...session, round: { phase: 'IDLE' } }
 }
 
@@ -330,5 +344,5 @@ export function resetStats(session: Session): Session {
 }
 
 export const knownSymbol = (value: unknown): value is SymbolId =>
-  typeof value === 'string' && Object.hasOwn(SYMBOLS, value)
+  typeof value === 'string' && Object.hasOwn(BOARD_SYMBOLS, value)
 

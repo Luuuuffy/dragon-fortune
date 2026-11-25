@@ -2,7 +2,7 @@ import { CELLS, JACKPOT_TIERS, LEGACY_BETS, LEGACY_LINE_COUNTS,
   betPerLineSen, money, parseBankroll, totalBetSen } from '../src/game/config'
 import { BONUS, bonusEntryChance, grandBoardChance } from '../src/game/bonusConfig'
 import { baseOrbChance, lanternCountOdds, orbTypeProbabilities } from '../src/game/engine'
-import { simulate } from '../src/game/simulation'
+import { expectedHoldPayout, simulate } from '../src/game/simulation'
 import { validBetting } from '../src/game/session'
 
 const [countArg = '100000', denominationArg = '1', sizeArg = '1', linesArg = '88', seedArg = '2026', ...extra] = process.argv.slice(2)
@@ -24,10 +24,12 @@ if (!Number.isSafeInteger(spins) || spins < 1 || spins > 10_000_000 ||
 
 const perLine = legacy ? bet : betPerLineSen(betting)
 const denominationSen = legacy ? 1 : betting.denominationSen
-const { won, bonusWon, triggers, hits, lineHits, jackpotCounts, jackpotHits, holdTriggers, lanternTriggers,
-  freeRetriggers, freePlayed, freeGoldOrbs, freeLineHits, freeHoldTriggers, freeWon, paidLanternCounts, freeLanternCounts } =
+const { won, bonusWon, components, triggers, hits, lineHits, jackpotCounts, jackpotHits, holdTriggers, lanternTriggers,
+  freeRetriggers, freePlayed, freeGoldOrbs, freeLineHits, freeHoldTriggers, freeWon, freeZeroPayouts, paidLanternCounts, freeLanternCounts } =
   simulate({ spins, denominationSen, betSize: legacy ? 1 : betting.betSize, bet, perLine, lines, seed, legacy })
 const percent = (ratio: number) => `${(100 * ratio).toFixed(6)}%`
+const expectedHold = expectedHoldPayout(denominationSen, legacy ? 1 : betting.betSize)
+const regularPerSpin = (components.line + components.scatter + components.freeLinesAndScatter) / spins
 console.log(`Dragon Fortune simulation | ${money(denominationSen)} denomination | ${money(bet)} wager | ${lines} lines | seed ${seed}`)
 console.table({
   'Total paid spins': spins,
@@ -53,9 +55,18 @@ console.table({
   'Free Spin retrigger rate': freePlayed ? percent(freeRetriggers / freePlayed) : '—',
   'Average Free Spins per feature': lanternTriggers ? (freePlayed / lanternTriggers).toFixed(2) : '—',
   'Average Free Spins payout': lanternTriggers ? money(Math.round(freeWon / lanternTriggers)) : '—',
+  'Free Spins features paying zero': lanternTriggers ? percent(freeZeroPayouts / lanternTriggers) : '—',
   'New orb type chances in Hold & Spin': orbTypeProbabilities.map(([type, chance]) => `${type} ${percent(chance)}`).join(' · '),
-  'Modeled GRAND rate per reel board': percent(grandBoardChance(CELLS, baseOrbChance)),
+  'Modeled GRAND rate per reel board': `${(100 * grandBoardChance(CELLS, baseOrbChance)).toExponential(4)}%`,
   'Estimated RTP': percent(won / (spins * bet)),
+  'RTP with modeled Hold & Spin prizes': percent((regularPerSpin + expectedHold.ordinaryOrbs + expectedHold.jackpots) / bet),
+  'Paid payline RTP': percent(components.line / (spins * bet)),
+  'Opening Lantern Scatter RTP': percent(components.scatter / (spins * bet)),
+  'Free payline and Scatter RTP': percent(components.freeLinesAndScatter / (spins * bet)),
+  'Ordinary Hold & Spin orb RTP': percent(components.ordinaryOrbs / (spins * bet)),
+  'Jackpot RTP': percent(components.jackpots / (spins * bet)),
+  'Modeled ordinary Hold & Spin orb RTP': percent(expectedHold.ordinaryOrbs / bet),
+  'Modeled jackpot RTP': percent(expectedHold.jackpots / bet),
   'Average payout': money(Math.round(won / spins)),
   'Hit frequency': percent(hits / spins),
   'Net result': money(won - spins * bet),

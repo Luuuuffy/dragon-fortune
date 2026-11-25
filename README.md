@@ -52,7 +52,7 @@ To preview the same production build locally, run `npm run build`, then `npm run
 
 Set your initial virtual bankroll on first launch. The default is RM 1,000.00 and the allowed range is RM 0.00 to RM 1,000,000.00. **Reset bankroll** next to the balance opens a confirmation showing the current balance and reset amount. Restore the saved initial bankroll there or choose **Change initial bankroll**. A confirmed reset starts a new session and clears statistics and the last result. Betting and audio preferences carry over.
 
-Choose a denomination, bet size, and line count, then select **Spin** or press Space. A new game starts at 1¢ × 1 × 8 lines for a total wager of RM 0.08. **Paylines** previews all 88 numbered paths, and **Paytable** shows line multipliers, Scatter prizes, and orb values. **Last win** clears when you start a paid spin and updates when its full payout settles. Standalone Hold & Spin uses **Respin**. Use **Continue** to close a regular win or a standalone bonus result.
+Choose a denomination, bet size, and line count, then select **Spin** or press Space. A new game starts at 1¢ × 1 × 8 lines for a total wager of RM 0.08. **Paylines** previews all 88 numbered paths, and **Paytable** shows line multipliers, Scatter prizes, and orb values. **Last win** clears when you start a paid spin and updates after prize collection. In a standalone Hold & Spin, tap **Respin** to spin the empty cells. When the round ends, dragons deliver the held prizes to **Bonus win**. **Skip** reveals the completed tally, and **Continue** returns to the reels after a standalone bonus or a regular win.
 
 Red Lanterns on three or more reels of a paid board start six automatic Free Spins. Each reel can show at most one Lantern. Each qualifying Free Spin adds three more. The feature displays the remaining spins and the amount earned by Free Spins and their Hold & Spin rounds. The original wager stays locked until the feature ends. A Hold & Spin triggered on the opening paid spin waits until the Free Spins finish. One triggered on a Free Spin plays automatically at the next break, then any remaining Free Spins resume. The final celebration closes automatically and the balance and **Last win** reflect the combined payout.
 
@@ -61,32 +61,50 @@ The settings include mute, master volume, separate music, reel-stop, orb, and ja
 ## Original demo mathematics
 
 - Each of the 15 cells has an independent Gold Orb draw with weight 16.6 out of 106.6. Hold & Spin requires at least six visible orbs. The modeled entry rate is 2.0034% per paid spin or Lantern Free Spin.
-- Each reel draws one stack of zero to three adjacent Panda Wilds. If a Lantern or Gold Orb blocks the requested stack, the longest stack that fits is used. Free Spins have higher stack weights.
+- Reels 2–5 can each draw a stack of one to three adjacent Panda Wilds. The longest stack that fits is used when a Lantern or Gold Orb blocks the requested size. Free Spins have higher stack weights.
 - During Lantern Free Spins, a board with four or fewer Gold Orbs has a 35% roll to replace one regular paying symbol with an extra Gold Orb. Wilds and Lanterns stay in place. The extra orb can bring a board up to five orbs, preserving the six-orb trigger and the original distribution of starting orbs for Hold & Spin.
-- Bet per line is denomination × bet size. Total bet is bet per line × active lines. The first N paths are active. Each pays its strongest applicable left-to-right match, including wild substitutions and wild-only combinations. Each line payout is its multiplier × bet per line, in integer sen.
-- During Hold & Spin, each empty position has an independent 4% chance to land an orb each respin. Existing orbs stay fixed. A hit restores three respins and a miss uses one.
+- Bet per line is denomination × bet size. Total bet is bet per line × active lines. The first N paths are active. Panda Wilds substitute for standard symbols when matching from the first reel. Each line payout is its multiplier × bet per line, in integer sen.
+- During Hold & Spin, each empty position has an independent 1.1% chance to land an orb each respin. Existing orbs stay fixed. A hit restores three respins and a miss uses one.
 - An ordinary orb stores its multiplier, displayed number, and payout when it lands. **Displayed number = base units × bet size × multiplier. Payout in sen = displayed number × denomination in sen.** Default base units are 8, and `BASE_ORB_UNITS_BY_DENOMINATION` can override them. The number of lines enters the wager calculation only. At RM 2 with bet size 3 and a 5× orb, the face shows 120 and pays RM 240.
-- The configurable multiplier and weight pairs are 1× (35), 2× (25), 3× (16), 5× (10), 10× (7), 20× (4), 50× (2), 100× (0.8), and 200× (0.2). The engine normalizes enabled weights. `maxOrbMultiplier` defaults to 200 and may be raised to enable new tiers.
-- Once an orb lands in Hold & Spin or on a qualifying starting board, one weighted type draw gives ordinary 99%, MINI 0.8%, MINOR 0.19%, or MAJOR 0.01%. Each special orb pays its stored jackpot. Ordinary and special prizes use separate rules.
+- The configurable multiplier and weight pairs are 1× (40.7), 2× (25), 3× (16), 5× (14), 10× (3.7), 20× (0.45), 50× (0.13), 100× (0.018), and 200× (0.002). The engine normalizes enabled weights. `maxOrbMultiplier` defaults to 200 and may be raised to enable new tiers.
+- Each orb on a qualifying starting board or in Hold & Spin draws its type once. The chances are ordinary 99.82999%, MINI 0.15%, MINOR 0.02%, and MAJOR 0.00001%. Each special orb pays its stored jackpot.
 - MINI pays 5,000 × denomination in sen and MINOR pays 20,000 × denomination in sen. MAJOR pays RM 50,000 and GRAND pays RM 200,000. Filling all 15 Hold & Spin cells adds GRAND to the board’s other prizes.
 - Lantern Scatter pays 2× the total bet for exactly three, 4× for exactly four, or a configurable 8× demo prize for five. The scatter count is capped by the number of reels with room. The Lantern count draw preserves the Gold Orb distribution. Paid and free weights govern entry and retrigger rates, and tier weights tune the count. Free Spin settings must keep expected retrigger awards below one additional spin per spin played.
 - These rules and probabilities are original demo math. The game has no payments or cashouts.
 
-Change reel, Lantern, orb, and jackpot type weights in `src/game/probabilityConfig.ts`. The simulator compares the entry rate set by `baseOrbWeight` with `targetEntryChance`. The separate `landingChance` controls respins and influences how often Hold & Spin boards fill.
+### Paytable and reel weights
 
-Before the Free Spins reel tuning, seed 2026 produced these results at 10¢ denomination, bet size 1, and 8 lines.
+| Symbol | 3 matches | 4 matches | 5 matches |
+|---|---:|---:|---:|
+| 9 | 2 | 5 | 15 |
+| 10 | 2 | 6 | 18 |
+| J | 3 | 8 | 22 |
+| Q | 3 | 10 | 25 |
+| K | 4 | 12 | 30 |
+| Chicken | 5 | 20 | 60 |
+| Boat | 6 | 25 | 80 |
+| Lotus Flower | 8 | 30 | 100 |
+| Tiger | 10 | 50 | 200 |
 
-| Paid spins | Paid Hold & Spin entries | Entry rate | GRAND awards including Free Spins |
-|---:|---:|---:|---:|
-| 10,000 | 204 | 2.0400% | 0 |
-| 100,000 | 2,014 | 2.0140% | 3 |
-| 1,000,000 | 19,947 | 1.9947% | 10 |
+The [reel weight tables](src/game/probabilityConfig.ts) list independent weights for each of the five paid reels and each of the five Free Spins reels, in paytable order. Low ranks occupy most of the regular-symbol pool. Wild stacks, Lanterns, and orbs use separate probabilities.
 
-The modeled GRAND rate per reel board is approximately 0.000920%. The million-spin run observed GRAND on 0.001000% of paid spins including their Free Spins. This sample remains sparse for estimating GRAND. The million-spin run recorded 26 MAJOR, 352 MINOR, and 1,475 MINI awards. It averaged RM 246.81 per Hold & Spin and RM 37.88 per Lantern feature’s Free Spins. Estimated virtual RTP was 701.89% at this wager. Large jackpots and the selected wager strongly affect this demo figure.
+### Rebalancing audit
 
-After the Gold Orb tuning and before Panda Wild stacks, the same million-spin simulation measured Hold & Spin on 1.9869% of paid spins and 2.0168% of Free Spins. The 114,141 Free Spins averaged 2.652 Gold Orbs per spin and hit a payline on 12.0877% of spins with eight active lines.
+The previous 10¢ × 1 × 8-line game hit a payline on 10.11% of paid spins and had a 27.69% zero-payout Free Spins rate, excluding the opening Scatter. The one-million-spin baseline returned 549.00% overall, with 429.00 percentage points from jackpots. Rare wins explain why short sessions could feel dry despite the high overall return. The audit found that the ordinary evaluator already paid the best eligible match on each enabled line and the settlement already included bonus prizes.
 
-With Panda Wild stacks, 200,000 simulated spins in each mode produced at least one full Panda reel on 7.72% of paid spins and 14.60% of Free Spins. Hold & Spin triggered on 1.982% of paid spins and 1.997% of Free Spins.
+All results use seed 2026. The modeled estimate combines simulated line and Scatter returns with Hold & Spin expectations calculated from the distribution of initial orbs, possible impacts on every respin, and the three-miss end condition. It includes each jackpot, even when the run observes zero awards for a tier.
+
+| Denomination × size × lines | Paid spins | Sample RTP | RTP with modeled Hold & Spin | Paid line hits | Zero-payout Free Spins |
+|---|---:|---:|---:|---:|---:|
+| 10¢ × 1 × 8, previous | 1,000,000 | 549.00% | — | 10.11% | 27.69% |
+| 10¢ × 1 × 8 | 100,000 | 91.01% | 91.40% | 31.69% | 4.40% |
+| 10¢ × 1 × 8 | 1,000,000 | 92.57% | 91.63% | 31.56% | 4.93% |
+| 1¢ × 1 × 8, default | 1,000,000 | 92.57% | 92.76% | 31.56% | 4.93% |
+| 50¢ × 5 × 38 | 1,000,000 | 40.67% | 40.67% | 49.12% | 0.74% |
+
+At 10¢ × 1 × 8, the million-spin sample returned 23.59% from paid lines, 3.80% from opening Scatters, 4.21% from Free Spins lines and Scatters, 38.47% from ordinary Hold & Spin orbs, and 22.50% from jackpots. Hold & Spin entered on 1.9961% of paid spins, and Free Spins retriggered on 3.1324% of free boards. The averages were RM 21.97 per Hold & Spin and RM 4.88 per Lantern feature after the opening Scatter. There were 236 MINI and 31 MINOR awards and zero MAJOR or GRAND awards. GRAND is modeled at about 1.20 per billion reel boards.
+
+Calibration targets the eight-line wager. An increase in lines raises the stake while keeping individual orb prizes the same. Higher line counts therefore have materially lower modeled RTP under these rules. All figures describe the original virtual game.
 
 ## Recovery
 
@@ -100,11 +118,13 @@ Version 4 persists the locked Free Spins wager, remaining spins, accumulated pay
 
 Version 5 adds stored orb payouts and music volume. Existing in-progress rounds retain their previous jackpot schedule and banked orb values. New orbs rolled after the update use the dynamic ordinary prize formula. New rounds receive the denomination-based jackpot schedule.
 
+Saved spins created before the symbol update use their original paytable. A settled Hold & Spin saves its award before presentation. Reloading during collection replays only the animation against that award. Once collection finishes or is skipped, the presentation completion flag is saved with the round. The balance and statistics receive each settlement once.
+
 ## Sound timing
 
 Each reel's CSS animation completion triggers one mechanical stop cue. A fallback completes any outstanding reels if their events never arrive. One reveal sequence shows and sounds each new Lantern or orb in order, with a tier-specific accent for jackpot orbs. Lanterns use a metallic chime and separate melodies for entry, retrigger, and completion. Orb pitch rises slightly within each spin or respin. Locked orbs stay silent. Unique keys per spin, phase, reel, and cell prevent repeated callbacks from replaying sounds. Audio begins after a browser interaction unlocks Web Audio.
 
-Original synthesized loops cover normal play, Hold & Spin, Free Spins, and jackpot celebrations. Tracks retain their playheads across spins and retriggers. When a queued bonus changes modes, the mixer crossfades over 550 ms and resumes the appropriate loop. Hold & Spin impacts add a bass drop, metal collision, shimmer, and short reflected taps. Heavy hits temporarily lower the music. A compressor limits peaks, and master mute silences music and effects together.
+Original synthesized loops cover normal play, Hold & Spin, dragon collection, Hold & Spin celebration, Free Spins, and GRAND. Tracks retain their playheads across spins and retriggers. The mixer crossfades over 550 ms when the mode changes. Flying dragons have separate takeoff and arrival cues, and the celebration score starts once the counter reaches the saved total. Heavy impacts temporarily lower the music. A compressor limits peaks, and master mute silences music and effects together.
 
 ## Structure
 

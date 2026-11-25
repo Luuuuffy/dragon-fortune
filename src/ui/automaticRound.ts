@@ -5,6 +5,7 @@ import type { Round, Session } from '../game/session'
 
 export function automaticRoundStep(round: Round, freeSpins: boolean, rng: Random) {
   if (!freeSpins) return null
+  if (round.phase === 'FEATURE_HOLD_RESULT' && !round.collectionComplete) return null
   const id = freeTransitionId(round)
   const { timing } = LANTERN
   if (round.phase === 'BONUS_READY') {

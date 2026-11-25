@@ -4,9 +4,12 @@ import type { Round } from '../game/session'
 
 export const MUSIC_FADE_SECONDS = 0.55
 export function musicModeForRound(round: Round, inFreeSpins: boolean): MusicMode {
-  if (round.phase === 'JACKPOT_CELEBRATION' ||
-      (round.phase === 'FEATURE_HOLD_RESULT' && round.holdResult.jackpot > 0)) return 'JACKPOT_CELEBRATION'
-  if ('bonus' in round || round.phase === 'BONUS_RESULT' || round.phase === 'FEATURE_HOLD_RESULT') return 'HOLD_AND_SPIN'
+  if (round.phase === 'FEATURE_HOLD_RESULT' || round.phase === 'BONUS_RESULT' || round.phase === 'JACKPOT_CELEBRATION') {
+    if (!round.collectionComplete) return 'HOLD_AND_SPIN_COLLECTION'
+    const result = round.phase === 'FEATURE_HOLD_RESULT' ? round.holdResult : round.result
+    return result.awards.some(award => award.tier === 'grand') ? 'GRAND_CELEBRATION' : 'HOLD_AND_SPIN_CELEBRATION'
+  }
+  if ('bonus' in round) return 'HOLD_AND_SPIN'
   return inFreeSpins && round.phase !== 'FREE_COMPLETE' ? 'FREE_SPINS' : 'NORMAL'
 }
 

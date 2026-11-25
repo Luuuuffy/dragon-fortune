@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS } from '../game/session'
+import type { Jackpot } from '../game/config'
 import type { Settings } from '../game/session'
 import type { RoundCue } from './roundCues'
 import { createMusicManager } from './music'
@@ -142,6 +143,23 @@ export function play(name: keyof typeof motifs, settings: Settings) {
   motifs[name].forEach((frequency, index) =>
     note(graph, jackpot ? graph.jackpot : graph.master, now + index * pace, frequency,
       name === 'reel' ? 0.14 : 0.32, name === 'reel' ? 0.035 : 0.17, name === 'reel' ? 'triangle' : 'sine'))
+}
+
+export function playCollectionCue(stage: 'lift' | 'arrive', settings: Settings, tier?: Jackpot) {
+  setAudio(settings)
+  const graph = audio
+  if (!graph || settings.muted || !settings.volume || !(tier ? settings.jackpotVolume : settings.orbVolume)) return
+  const bus = tier ? graph.jackpot : graph.orb
+  const now = graph.context.currentTime
+  if (stage === 'lift') {
+    note(graph, bus, now, 260, 0.24, tier ? 0.085 : 0.045, 'triangle', 0.035, 680)
+    note(graph, bus, now + 0.035, 520, 0.20, 0.035, 'sine', 0.028, 1040)
+    return
+  }
+  if (tier) graph.musicManager.duck(tier === 'grand' ? 0.36 : 0.54, 0.28)
+  const tones = tier === 'grand' ? [392, 523, 659, 784, 1047] : tier ? [523, 784, 1047] : [784, 1175]
+  tones.forEach((frequency, index) =>
+    note(graph, bus, now + index * 0.034, frequency, 0.16, tier ? 0.112 : 0.060, 'sine', 0.008))
 }
 
 export function playRoundCue(cue: RoundCue, settings: Settings) {

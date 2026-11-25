@@ -1,10 +1,30 @@
-import { BONUS } from './bonusConfig'
+import { BONUS, holdBoardMoments } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
-import { evaluateLines, evaluateScatter, generateBoard, legacyLinePayout, respin, seededRandom,
-  settleBonus, startingOrbs, triggersBonus } from './engine'
+import { baseOrbChance, evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, legacyLinePayout,
+  orbTypeProbabilities, respin, seededRandom, settleBonus, startingOrbs, triggersBonus } from './engine'
 import type { Slots } from './engine'
-import { calculateJackpots } from './config'
+import { CELLS, calculateJackpots } from './config'
 import type { SymbolId } from './config'
+import { calculateOrbPrize, orbMultiplierWeights } from './orbPrizes'
+
+export function expectedHoldPayout(denominationSen: number, betSize: number, grandAddsToOrbs: boolean = BONUS.grandAddsToOrbs) {
+  const paidEntry = lanternCountOdds(false).slice(3).reduce((sum, chance) => sum + chance, 0)
+  const retrigger = lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0)
+  const boardsPerPaidSpin = 1 + paidEntry * LANTERN.initialSpins / (1 - retrigger * LANTERN.extraSpins)
+  const { full, orbs } = holdBoardMoments(CELLS, baseOrbChance)
+  const paidOrbs = (orbs - (grandAddsToOrbs ? 0 : CELLS * full)) * boardsPerPaidSpin
+  const prizes = calculateJackpots(denominationSen)
+  const multiplierWeight = orbMultiplierWeights.reduce((sum, [, weight]) => sum + weight, 0)
+  const ordinaryMean = orbMultiplierWeights.reduce((sum, [multiplier, weight]) =>
+    sum + calculateOrbPrize(denominationSen, betSize, multiplier).payoutSen * weight / multiplierWeight, 0)
+  let ordinaryOrbs = 0
+  let jackpots = full * boardsPerPaidSpin * prizes.grand
+  for (const [type, chance] of orbTypeProbabilities) {
+    if (type === 'ordinary') ordinaryOrbs = paidOrbs * chance * ordinaryMean
+    else jackpots += paidOrbs * chance * prizes[type]
+  }
+  return { ordinaryOrbs, jackpots, grandAwards: full * boardsPerPaidSpin }
+}
 
 export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, lines, seed, legacy = false }: {
   spins: number; denominationSen: number; betSize?: number; bet: number; perLine: number; lines: number; seed: number; legacy?: boolean
@@ -17,6 +37,7 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
   const lastJackpotSpin = { grand: -1, major: -1, minor: -1, mini: -1 }
   let won = 0
   let bonusWon = 0
+  const components = { line: 0, scatter: 0, freeLinesAndScatter: 0, ordinaryOrbs: 0, jackpots: 0 }
   let triggers = 0
   let holdTriggers = 0
   let hits = 0
@@ -30,6 +51,7 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
   let freeLineHits = 0
   let freeHoldTriggers = 0
   let freeWon = 0
+  let freeZeroPayouts = 0
 
   const lineWin = (board: SymbolId[]) => {
     const raw = evaluateLines(board, perLine, lines).amount
@@ -47,6 +69,8 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
     const result = settleBonus(orbs, jackpotPrizes)
     const payout = result.bonus + result.jackpot
     bonusWon += payout
+    components.ordinaryOrbs += result.bonus
+    components.jackpots += result.jackpot
     for (const { tier } of result.awards) {
       jackpotCounts[tier]++
       if (lastJackpotSpin[tier] === paidSpin) continue
@@ -63,6 +87,8 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
     const scatter = evaluateScatter(board, bet)
     paidLanternCounts[Math.min(scatter.count, 5)]++
     const baseLine = lineWin(board)
+    components.line += baseLine
+    components.scatter += scatter.amount
     if (baseLine > 0) lineHits++
     let amount = baseLine + scatter.amount
     if (scatter.qualifies) {
@@ -79,6 +105,7 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
         freeLanternCounts[Math.min(freeScatter.count, 5)]++
         const freeLine = lineWin(freeBoard)
         if (freeLine > 0) freeLineHits++
+        components.freeLinesAndScatter += freeLine + freeScatter.amount
         featureWin += freeLine + freeScatter.amount
         if (freeScatter.qualifies) {
           freeRetriggers++
@@ -90,6 +117,7 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
         }
       }
       freeWon += featureWin
+      if (!featureWin) freeZeroPayouts++
       amount += featureWin
     }
     if (hold) {
@@ -99,6 +127,6 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
     won += amount
     if (amount > 0) hits++
   }
-  return { spins, won, bonusWon, triggers, hits, lineHits, jackpotCounts, jackpotHits, holdTriggers, lanternTriggers,
-    freeRetriggers, freePlayed, freeGoldOrbs, freeLineHits, freeHoldTriggers, freeWon, paidLanternCounts, freeLanternCounts }
+  return { spins, won, bonusWon, components, triggers, hits, lineHits, jackpotCounts, jackpotHits, holdTriggers, lanternTriggers,
+    freeRetriggers, freePlayed, freeGoldOrbs, freeLineHits, freeHoldTriggers, freeWon, freeZeroPayouts, paidLanternCounts, freeLanternCounts }
 }

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { money, SYMBOLS } from '../game/config'
+import { BOARD_SYMBOLS, money } from '../game/config'
 import type { SymbolId } from '../game/config'
 import type { Orb } from '../game/engine'
 
@@ -41,6 +41,46 @@ export function SymbolPaint() {
 const gold = 'url(#gold-foil)'
 const edge = 'url(#gold-edge)'
 const shapes: Partial<Record<SymbolId, ReactNode>> = {
+  tiger: <>
+    <circle cx="60" cy="51" r="43" fill="#451c13" stroke={edge} strokeWidth="2"/>
+    <circle cx="60" cy="51" r="36" fill="none" stroke="#ecab48" strokeDasharray="2 3"/>
+    <path d="M33 34C14 9 38 9 46 23q14-6 28 0c8-14 32-14 13 11l8 19-6 16-15 14-14 8-14-8-15-14-6-16Z"
+      fill="url(#phoenix-foil)" stroke="#ffe694" strokeWidth="2"/>
+    <path d="M31 56q11-5 27 9l2 15 2-15q16-14 27-9l-5 12-12 12-12 6-12-6-12-12Z" fill="#ffe8bc"/>
+    <path d="m47 27 10 11-16-6Zm26 0L63 38l16-6ZM35 39l16 8-17-3Zm50 0-16 8 17-3ZM33 49l16 8-13-3Zm54 0-16 8 13-3ZM36 62l12 3-9 1Zm48 0-12 3 9 1Z"
+      fill="#472017"/>
+    <path d="M40 45q10 0 14 6m26-6q-10 0-14 6" fill="none" stroke="#fff2ab" strokeWidth="2.5" strokeLinecap="round"/>
+    <path d="M55 61q5-3 10 0l-5 6Zm-6 10q7 5 11 0 4 5 11 0l-3 6H52Z" fill="#542126"/>
+    <path d="M19 39l3 5 5 2-5 2-3 5-2-5-5-2 5-2Zm82 0 2 5 5 2-5 2-2 5-3-5-5-2 5-2Z" fill="#fff0a4"/>
+  </>,
+  chicken: <>
+    <path d="M48 69C20 69 11 45 14 25c14 3 22 10 26 25-6-23 2-33 12-39 8 11 7 24 2 35"
+      fill="url(#jade-foil)" stroke="#f8cd77" strokeWidth="1.5"/>
+    <path d="M39 64c4-12 20-19 27-20 1-9 4-22 14-25 10-3 18 5 17 14l14 5-14 5c-9 3-3 22-11 31-10 12-37 13-47 2Z"
+      fill="url(#phoenix-foil)" stroke={edge} strokeWidth="2"/>
+    <path d="M77 21c-6-11-1-15 5-8 1-9 9-9 9 1 7-5 12 1 4 8m2 20c6 1 8 8 1 10l-5-6" fill="#e83b46" stroke="#ffc885"/>
+    <circle cx="89" cy="30" r="2.4" fill="#2b1826"/>
+    <path d="M49 63c13-10 32-10 36-10-5 14-15 22-29 21Z" fill={gold} stroke="#fbe8a9"/>
+    <path d="M60 83 54 92h-8m25-9 5 9h8" fill="none" stroke="#f4b859" strokeWidth="3" strokeLinecap="round"/>
+  </>,
+  boat: <>
+    <path d="M8 79q12 7 25 1t26 0 26 0 26 0M19 87q10 4 21-1t22 0 22 0 16 0" fill="none" stroke="#63c7b4" strokeWidth="3" strokeLinecap="round"/>
+    <path d="M23 35c13-7 20-12 27-25v48H22c5-8 5-16 1-23Zm39-13c16 5 28 15 34 34H62Z"
+      fill="url(#lantern-silk)" stroke="#f6cd74" strokeWidth="2"/>
+    <path d="M50 19v46m12-50v50M26 40h24m-26 9h26m12-17 22 9M62 43l28 6" fill="none" stroke="#efb85a" strokeWidth="2"/>
+    <path d="M11 61q18 7 47 6 32 0 49-15-4 16-18 24H33q-13-4-22-15Z" fill={gold} stroke="#ffeb9c" strokeWidth="2"/>
+    <path d="M31 71h57" stroke="#914b26" strokeWidth="2"/>
+  </>,
+  lotus: <>
+    <ellipse cx="60" cy="77" rx="42" ry="10" fill="url(#jade-foil)" stroke={edge} strokeWidth="2"/>
+    <path d="M59 69C31 67 17 59 13 38c19 1 36 8 46 31Zm2 0c28-2 42-10 46-31-19 1-36 8-46 31Z"
+      fill="url(#rank-q)" stroke="#ffc683" strokeWidth="1.8"/>
+    <path d="M60 71C37 64 24 46 32 23c18 8 26 24 28 48Zm0 0c23-7 36-25 28-48-18 8-26 24-28 48Z"
+      fill="url(#rank-a)" stroke="#ffcb85" strokeWidth="1.8"/>
+    <path d="M60 72C43 58 42 35 60 14c18 21 17 44 0 58Z" fill="url(#rank-a)" stroke="#ffe1a6" strokeWidth="2"/>
+    <path d="M60 29c-6 13-5 23 0 33 5-10 6-20 0-33Z" fill={gold}/>
+    <path d="M43 75q17 9 34 0" fill="none" stroke="#fff0ad" strokeWidth="2" strokeLinecap="round"/>
+  </>,
   lantern: <>
     <path d="M54 20V13a6 6 0 0 1 12 0v7" fill="none" stroke={edge} strokeWidth="3"/>
     <path d="M22 47C22 28 38 23 60 23s38 5 38 24S82 75 60 75 22 66 22 47Z"
@@ -135,10 +175,10 @@ export function OrbSymbol({ orb }: { orb?: Orb }) {
 export function Symbol({ symbol }: { symbol: SymbolId }) {
   if (symbol === 'orb') return <OrbSymbol/>
   const shape = shapes[symbol]
-  return <svg className={`slot-symbol symbol-${symbol}`} viewBox="0 0 120 104" role="img" aria-label={SYMBOLS[symbol].name}>
+  return <svg className={`slot-symbol symbol-${symbol}`} viewBox="0 0 120 104" role="img" aria-label={BOARD_SYMBOLS[symbol].name}>
     {shape ?? <>
       <path d="M26 17h68M26 87h68" stroke="#c09258" strokeOpacity=".28" strokeDasharray="2 4"/>
-      <text className="symbol-rank" x="60" y="75" textAnchor="middle" fill={`url(#rank-${symbol.toLowerCase()})`} stroke={edge} strokeWidth=".95" paintOrder="stroke">{symbol}</text>
+      <text className="symbol-rank" x="60" y="75" textAnchor="middle" fill={symbol === '9' ? gold : `url(#rank-${symbol.toLowerCase()})`} stroke={edge} strokeWidth=".95" paintOrder="stroke">{symbol}</text>
     </>}
   </svg>
 }

@@ -2,7 +2,7 @@ import { money } from '../game/config'
 import { LANTERN } from '../game/lanternConfig'
 import { freeSpinsWin } from '../game/session'
 import type { FreeSpins, Round } from '../game/session'
-import { Celebration, Coins } from './Celebration'
+import { Coins } from './Celebration'
 import { Symbol } from './Symbol'
 
 export function FreeSpinsMeters({ feature, increase }: { feature: FreeSpins; increase: boolean }) {
@@ -13,14 +13,9 @@ export function FreeSpinsMeters({ feature, increase }: { feature: FreeSpins; inc
   </>
 }
 
-export function FreeSpinsDisplay({ feature, round, reduced, speed }: {
-  feature: FreeSpins; round: Round; reduced: boolean; speed: number;
+export function FreeSpinsDisplay({ feature, round, reduced }: {
+  feature: FreeSpins; round: Round; reduced: boolean;
 }) {
-  if (round.phase === 'FEATURE_HOLD_RESULT') {
-    return <div className="free-message hold-message" role="status">
-      <Celebration key={round.holdResult.spinId} result={round.holdResult} reduced={reduced} speed={speed}/>
-    </div>
-  }
   const intro = round.phase === 'FREE_INTRO'
   const extra = round.phase === 'FREE_WAIT' ? round.extra : 0
   const complete = round.phase === 'FREE_COMPLETE'

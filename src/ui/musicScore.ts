@@ -1,4 +1,5 @@
-export type MusicMode = 'NORMAL' | 'HOLD_AND_SPIN' | 'FREE_SPINS' | 'JACKPOT_CELEBRATION'
+export type MusicMode = 'NORMAL' | 'HOLD_AND_SPIN' | 'FREE_SPINS' |
+  'HOLD_AND_SPIN_COLLECTION' | 'HOLD_AND_SPIN_CELEBRATION' | 'GRAND_CELEBRATION'
 
 // Original eight-measure loops. MIDI notes are used solely as pitch numbers.
 const scores = {
@@ -17,7 +18,17 @@ const scores = {
     melody: [[72, 76, 79, 81, 79], [74, 79, 81, 84, 79], [76, 81, 84, 81, 76], [76, 74, 72, 76, 79],
       [77, 81, 84, 86, 81], [79, 76, 72, 74, 76], [74, 79, 81, 84, 86], [84, 81, 79, 74, 79]],
   },
-  JACKPOT_CELEBRATION: {
+  HOLD_AND_SPIN_COLLECTION: {
+    bpm: 78, roots: [38, 38, 41, 43, 38, 41, 45, 43], energy: 0.63, accents: [0, 2.5],
+    melody: [[62, 65, 69], [57, 62, 65], [65, 69, 72], [67, 72, 74],
+      [62, 69, 74], [65, 69, 72], [69, 74, 76], [67, 65, 62]],
+  },
+  HOLD_AND_SPIN_CELEBRATION: {
+    bpm: 128, roots: [50, 55, 57, 50, 53, 55, 57, 50], energy: 1.02, accents: [0, 1, 2.5, 3],
+    melody: [[74, 78, 81, 86], [79, 81, 86, 91], [81, 85, 88, 93], [86, 81, 78, 74],
+      [77, 81, 84, 89], [79, 83, 86, 91], [81, 85, 88, 93], [90, 86, 81, 78]],
+  },
+  GRAND_CELEBRATION: {
     bpm: 137, roots: [48, 53, 57, 55, 48, 53, 55, 55], energy: 1.1, accents: [0, 1, 2, 3],
     melody: [[72, 76, 79, 84, 91], [77, 81, 84, 88, 84], [81, 84, 88, 91, 88], [79, 83, 86, 91, 86],
       [84, 79, 76, 79, 88], [89, 84, 81, 84, 89], [86, 83, 79, 86, 91], [91, 86, 83, 79, 74]],

@@ -5,7 +5,7 @@ import { evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, lanter
   triggersBonus } from './engine'
 import type { Scenario } from './engine'
 import { LANTERN } from './lanternConfig'
-import { dismissResult, freeSpinsWin, lastWinSen, newSession, openBonus, resetGame, revealRespin,
+import { completeHoldCollection, dismissResult, freeSpinsWin, lastWinSen, newSession, openBonus, resetGame, revealRespin,
   revealSpin, selectBetting, setBankroll, startRespin, startSpin } from './session'
 import type { Session } from './session'
 import { simulate } from './simulation'
@@ -50,6 +50,9 @@ function tick(session: Session) {
   if (round.phase === 'SPINNING') return hydrate(reeled(session))
   if (round.phase === 'BONUS_TRIGGER') return hydrate(openBonus(session, round.bonus.spin.id))
   if (round.phase === 'BONUS_RESPIN') return hydrate(revealRespin(session, round.bonus.spin.id, round.bonus.turn))
+  if (round.phase === 'FEATURE_HOLD_RESULT' && !round.collectionComplete) {
+    return hydrate(completeHoldCollection(session, round.holdResult.bonusId!))
+  }
   throw new Error(`No automatic action for ${round.phase}`)
 }
 
@@ -145,6 +148,7 @@ describe('Red Lantern scatter', () => {
           const column = board.slice(cellAt(reel, 0), cellAt(reel, 0) + ROWS)
           if (column.filter(symbol => symbol === 'lantern').length > 1) duplicateLanternReels++
           const wilds = column.filter(symbol => symbol === 'wild').length
+          if (reel === 0 && wilds) splitStacks++
           if (wilds === 2 && column[1] !== 'wild') splitStacks++
           stacks[wilds]++
           if (wilds === ROWS) fullStack = true
@@ -204,15 +208,15 @@ describe('automatic Free Spins', () => {
     const active = startSpin(funded(), noHits, rootId, 'lanternRepeat')
     if (active.round.phase !== 'SPINNING') throw new Error('Expected the paid spin')
     const board = generateBoard(noHits, 'none')
-    for (let reel = 0; reel < 5; reel++) board[cellAt(reel, 1)] = 'coin'
+    for (let reel = 0; reel < 5; reel++) board[cellAt(reel, 1)] = 'boat'
     for (const reel of [0, 2, 4]) board[cellAt(reel, 0)] = 'lantern'
     const intro = revealSpin({ ...active, round: { ...active.round, spin: { ...active.round.spin, board } } }, rootId)
     const { session, frames } = finish(hydrate(intro))
     expect(session.stats).toMatchObject({ freePlayed: 15, freeRetriggers: 3, wagered: wager })
-    expect(session.last).toMatchObject({ line: 650, scatter: 640, freeSpins: 480, total: 1290 })
-    expect(session.balance).toBe(START_BALANCE - wager + 1290)
+    expect(session.last).toMatchObject({ line: 800, scatter: 640, freeSpins: 480, total: 1440 })
+    expect(session.balance).toBe(START_BALANCE - wager + 1440)
     expect(frames.slice(0, -1).every(frame => lastWinSen(frame) === 0)).toBe(true)
-    expect(lastWinSen(session)).toBe(1290)
+    expect(lastWinSen(session)).toBe(1440)
     expect(revealSpin(session, rootId)).toBe(session)
   })
 

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { DEFAULT_SETTINGS, advanceFreeSpins, newSession, revealSpin, setBankroll, startSpin } from '../game/session'
+import { DEFAULT_SETTINGS, advanceFreeSpins, completeHoldCollection, newSession, openBonus, revealRespin, revealSpin,
+  setBankroll, startRespin, startSpin } from '../game/session'
 import { MUSIC_FADE_SECONDS, createMusicManager, musicModeForRound } from './music'
 import { renderMusic } from './musicScore'
 
@@ -157,14 +158,23 @@ it('selects music from the saved gameplay phase and keeps Free Spins on their tr
   expect(musicModeForRound(free.round, true)).toBe('FREE_SPINS')
   expect(musicModeForRound(spin.round, true)).toBe('FREE_SPINS')
   expect(musicModeForRound(extra.round, true)).toBe('FREE_SPINS')
-  expect(musicModeForRound({ phase: 'JACKPOT_CELEBRATION' } as typeof base, false)).toBe('JACKPOT_CELEBRATION')
+  const grand = openBonus(revealSpin(startSpin(funded, rng, 'grand', 'full'), 'grand'), 'grand')
+  expect(musicModeForRound(grand.round, false)).toBe('HOLD_AND_SPIN_COLLECTION')
+  expect(musicModeForRound(completeHoldCollection(grand, 'grand:bonus').round, false)).toBe('GRAND_CELEBRATION')
+  let ordinary = openBonus(hold, 'hold')
+  for (let turn = 1; turn <= 3; turn++) ordinary = revealRespin(startRespin(ordinary, rng), 'hold', turn)
+  expect(musicModeForRound(ordinary.round, false)).toBe('HOLD_AND_SPIN_COLLECTION')
+  expect(musicModeForRound(completeHoldCollection(ordinary, 'hold:bonus').round, false)).toBe('HOLD_AND_SPIN_CELEBRATION')
 })
 
 it('uses distinct, bounded PCM music loops and smoothly ducks after loud sounds', async () => {
   const normal = renderMusic('NORMAL', 8000)
   const hold = renderMusic('HOLD_AND_SPIN', 8000)
   const free = renderMusic('FREE_SPINS', 8000)
-  expect(new Set([normal.length, hold.length, free.length]).size).toBe(3)
+  const collection = renderMusic('HOLD_AND_SPIN_COLLECTION', 8000)
+  const celebration = renderMusic('HOLD_AND_SPIN_CELEBRATION', 8000)
+  const grand = renderMusic('GRAND_CELEBRATION', 8000)
+  expect(new Set([normal, hold, free, collection, celebration, grand].map(track => track.length)).size).toBe(6)
   expect(normal.some(sample => Math.abs(sample) > 0.02)).toBe(true)
   expect(normal.every(sample => Math.abs(sample) < 1)).toBe(true)
   expect(Math.abs(normal[0] - normal.at(-1)!)).toBeLessThan(0.02)

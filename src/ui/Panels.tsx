@@ -80,7 +80,7 @@ function Paytable({ bet, perLine, denominationSen, betSize }: {
       <li><b>4 Lanterns</b> {money(bet * LANTERN.payouts[4])}</li>
       <li><b>5 Lanterns</b> {money(bet * LANTERN.payouts[5])} (demo prize)</li>
     </ul>
-    <p>Paying symbols match from the first reel. Panda Wilds can fill one, two, or all three spots on a reel. They substitute for any paying symbol and also have their own payout. Each active line pays its highest qualifying combination. Gold orbs do not substitute or pay on lines.</p>
+    <p>Paying symbols match from the first reel. On reels 2–5, one to three Panda Wilds can stack and substitute for standard paying symbols. Each active line pays its highest qualifying combination.</p>
     <h3>Hold & Spin prizes</h3>
     <p>Six or more Gold Orbs start the feature. An ordinary orb shows base orb units × bet size × multiplier.
       Its payout is that number times the triggering denomination.</p>

@@ -5,10 +5,21 @@ import type { SymbolId } from '../game/config'
 import type { LineWin, Slots } from '../game/engine'
 import { OrbSymbol, Symbol } from './Symbol'
 
-const filler: SymbolId[] = ['A', 'jade', 'Q', 'ingot', 'K', 'dragon', 'coin', '10', 'phoenix', 'orb']
+const filler: SymbolId[] = ['9', 'lotus', 'Q', 'boat', 'K', 'tiger', 'chicken', '10', 'J', 'orb']
 const lineColors = ['#ffce68', '#f479a9', '#b1a3ff', '#7ff7c0', '#84dbff', '#ffffaa']
 const x = (index: number) => (Math.floor(index / ROWS) + 0.5) * 60
 const y = (index: number) => (index % ROWS + 0.5) * 40
+const miniReelSymbols = ['blank', 'ingot', 'flash', 'spark', 'blank', 'gold'] as const
+
+function CellReel({ position }: { position: number }) {
+  const offset = position % miniReelSymbols.length
+  const sequence = [...miniReelSymbols.slice(offset), ...miniReelSymbols.slice(0, offset)]
+  return <div className="cell-mini-reel" aria-hidden="true">
+    <div className="cell-mini-strip">
+      {[...sequence, ...sequence].map((kind, index) => <i key={index} className={`cell-filler ${kind}`}/>)}
+    </div>
+  </div>
+}
 
 export function LinesOverlay({ wins, preview }: { wins: LineWin[]; preview: number | null }) {
   if (!wins.length && preview === null) return null
@@ -22,10 +33,11 @@ export function LinesOverlay({ wins, preview }: { wins: LineWin[]; preview: numb
 }
 
 export function Reels({ board, boardOrbs, target, stopped, duration, bonus, baseOrbs, respinning,
-  landedSymbols, highlightLanterns, wins, preview, spinId, anticipation, reducedReels, compactReels, onReelStop }: {
+  stoppedCells, nextBonusOrbs, landedSymbols, highlightLanterns, wins, preview, spinId, anticipation, reducedReels, compactReels, onReelStop }: {
   board: SymbolId[]; target: SymbolId[] | null; stopped: number[]; duration: number[]; bonus: Slots | null;
   boardOrbs: Slots;
   baseOrbs: Slots | null; respinning: boolean; landedSymbols: number[]; highlightLanterns: boolean; wins: LineWin[];
+  stoppedCells: number[]; nextBonusOrbs: Slots | null;
   preview: number | null; spinId: string; anticipation: boolean; reducedReels: boolean; compactReels: boolean;
   onReelStop: (reel: number) => void;
 }) {
@@ -67,14 +79,20 @@ export function Reels({ board, boardOrbs, target, stopped, duration, bonus, base
             const revealed = landedSymbols.includes(index)
             const lantern = visible[index] === 'lantern' && !bonus
             const waiting = target && (visible[index] === 'orb' || lantern) && !revealed
+            const cellSpins = respinning && !orb && (!stoppedCells.includes(index) || Boolean(nextBonusOrbs?.[index]))
             const classes = ['reel-cell', winningCells.has(index) && !bonus && 'winning-cell',
               bonus && orb && 'locked', revealed && (lantern ? 'new-lantern' : 'new-orb'),
               lantern && highlightLanterns && 'scatter-cell', bonus && !orb && 'empty',
-              bonus && !orb && respinning && 'respinning'].filter(Boolean).join(' ')
-            return <div key={index} className={classes} style={{ '--cell-index': index } as CSSProperties}>
+              cellSpins && 'respinning'].filter(Boolean).join(' ')
+            return <div key={index} className={classes} data-orb-position={bonus && orb ? index : undefined}
+              style={{ '--cell-index': index } as CSSProperties}>
               {waiting ? null
                 : orb ? <><OrbSymbol orb={orb}/>
+                  {bonus && revealed && <span className="orb-burst" aria-hidden="true">
+                    {Array.from({ length: 8 }, (_, ray) => <i key={ray} style={{ '--ray': `${ray * 45}deg` } as CSSProperties}/>)}
+                  </span>}
                   {bonus && <LockKeyhole className="lock" size={12} aria-label="Held"/>}</>
+                : cellSpins ? <CellReel position={index}/>
                 : bonus ? <span className="empty-mark" aria-hidden="true">◇</span>
                 : <Symbol symbol={visible[index]}/>}
             </div>

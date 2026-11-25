@@ -1,9 +1,9 @@
 import {
-  CELLS, DEFAULT_BETTING, JACKPOT_TIERS, PAYLINES, REELS, ROWS, SYMBOLS, WILD_RULES, cellAt,
+  CELLS, DEFAULT_BETTING, JACKPOT_TIERS, LEGACY_SYMBOLS, PAYLINES, REELS, ROWS, SYMBOLS, cellAt,
 } from './config'
 import { BONUS, binomial } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
-import { NON_ORB_WEIGHT, REGULAR_SYMBOL_WEIGHTS, WILD_STACK_WEIGHTS } from './probabilityConfig'
+import { NON_ORB_WEIGHT, REEL_SYMBOL_WEIGHTS, REEL_WILD_ALLOWED, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS } from './probabilityConfig'
 import { calculateOrbPrize, orbMultiplierWeights } from './orbPrizes'
 import type { Orb, OrbWager } from './orbPrizes'
 import type { Jackpot, JackpotPrizes, SymbolId } from './config'
@@ -85,18 +85,14 @@ function weighted<T>(items: readonly (readonly [T, number])[]) {
   }
 }
 
-const symbolIds = Object.keys(SYMBOLS) as SymbolId[]
-const payingSymbols = symbolIds.filter(symbol => SYMBOLS[symbol].pays)
-const regularWeights = Object.entries(REGULAR_SYMBOL_WEIGHTS) as [SymbolId, number][]
-const regularTotal = regularWeights.reduce((sum, [, weight]) => sum + weight, 0)
+const legacyPayingSymbols = (Object.keys(LEGACY_SYMBOLS) as (keyof typeof LEGACY_SYMBOLS)[])
+  .filter(symbol => LEGACY_SYMBOLS[symbol].pays)
 const symbolTotal = NON_ORB_WEIGHT + BONUS.baseOrbWeight
-if (regularWeights.some(([, weight]) => !Number.isFinite(weight) || weight < 0) || regularTotal <= 0 ||
-    !Number.isFinite(regularTotal) || !Number.isFinite(NON_ORB_WEIGHT) || NON_ORB_WEIGHT <= 0 ||
+if (!Number.isFinite(NON_ORB_WEIGHT) || NON_ORB_WEIGHT <= 0 ||
     !Number.isFinite(symbolTotal) || BONUS.baseOrbWeight < 0) {
   throw new RangeError('Symbol weights must be finite and nonnegative.')
 }
 export const baseOrbChance = BONUS.baseOrbWeight / symbolTotal
-const drawRegular = weighted<SymbolId>(regularWeights)
 const reelPositions = Array.from({ length: REELS }, (_, reel) =>
   Array.from({ length: ROWS }, (_, row) => cellAt(reel, row)))
 const reelOpenOdds = binomial(ROWS, 1 - baseOrbChance)
@@ -108,7 +104,8 @@ for (let reel = 0; reel < REELS; reel++) {
 }
 
 export function lanternReels(lanternWeight: number, tierWeights: readonly [number, number, number],
-  stackWeights: readonly [number, number, number, number] = WILD_STACK_WEIGHTS.paid) {
+  stackWeights: readonly [number, number, number, number] = WILD_STACK_WEIGHTS.paid,
+  reelWeights: readonly (readonly number[])[] = REEL_SYMBOL_WEIGHTS.paid) {
   if (!Number.isFinite(lanternWeight) || lanternWeight < 0 || lanternWeight >= NON_ORB_WEIGHT ||
       tierWeights.some(weight => !Number.isFinite(weight) || weight < 0)) {
     throw new Error('Provide a Lantern weight below the regular symbol weight and nonnegative tier weights.')
@@ -118,6 +115,13 @@ export function lanternReels(lanternWeight: number, tierWeights: readonly [numbe
     throw new RangeError('Configure finite, nonnegative Panda Wild stack weights with a positive total.')
   }
   const drawStack = weighted(stackWeights.map((weight, size) => [size, weight] as const))
+  if (reelWeights.length !== REELS || reelWeights.some(weights =>
+    weights.length !== REGULAR_SYMBOL_ORDER.length || weights.some(weight => !Number.isFinite(weight) || weight < 0) ||
+    !Number.isFinite(weights.reduce((sum, weight) => sum + weight, 0)) || !weights.some(weight => weight > 0))) {
+    throw new RangeError('Provide a finite paying-symbol weight table for each reel.')
+  }
+  const drawRegular = reelWeights.map(weights =>
+    weighted<SymbolId>(REGULAR_SYMBOL_ORDER.map((symbol, index) => [symbol, weights[index]] as const)))
 
   // Keep the existing scatter count draw, capped by the number of reels with space for a Lantern.
   const countOdds = Array.from({ length: CELLS + 1 }, (_, positions) => {
@@ -152,6 +156,7 @@ export function lanternReels(lanternWeight: number, tierWeights: readonly [numbe
         board[positions[Math.floor(rng() * positions.length)]] = 'lantern'
       }
       for (const positions of openReels) {
+        if (!REEL_WILD_ALLOWED[Math.floor(positions[0] / ROWS)]) continue
         const available = positions.filter(position => board[position] === null)
         // A Lantern or Gold Orb splits a stack. Use the longest requested streak that fits.
         for (let size = Math.min(available.length, drawStack(rng)); size > 0; size--) {
@@ -162,12 +167,12 @@ export function lanternReels(lanternWeight: number, tierWeights: readonly [numbe
           break
         }
       }
-      return board.map(symbol => symbol ?? drawRegular(rng))
+      return board.map((symbol, index) => symbol ?? drawRegular[Math.floor(index / ROWS)](rng))
     },
   }
 }
 const paidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights)
-const freeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, WILD_STACK_WEIGHTS.free)
+const freeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, WILD_STACK_WEIGHTS.free, REEL_SYMBOL_WEIGHTS.free)
 export const lanternCountOdds = (free: boolean) => (free ? freeReels : paidReels).odds
 if (lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0) * LANTERN.extraSpins >= 1) {
   throw new Error('Free Spin Lantern weight must keep expected retrigger awards below one per spin.')
@@ -190,8 +195,8 @@ const drawOrbType = weighted(types.filter(([, weight]) => weight > 0))
 export const orbTypeProbabilities = types.map(([type, weight]) => [type, weight / totalTypeWeight] as const)
 
 export const sampleBoard = (): SymbolId[] => [
-  'dragon', 'K', 'coin', 'A', 'ingot', 'phoenix', 'jade', 'wild', 'Q',
-  'phoenix', 'orb', '10', 'coin', 'dragon', 'jade',
+  'tiger', 'K', 'boat', '9', 'lotus', 'chicken', 'lotus', 'wild', 'Q',
+  'chicken', 'orb', '10', 'boat', 'tiger', 'lotus',
 ]
 
 // The showroom board and old saves without stored face values use a fixed sample.
@@ -212,14 +217,14 @@ export function generateBoard(rng: Random, scenario?: Scenario, free = false): S
     }
     return board
   }
-  const board: SymbolId[] = ['Q', 'A', 'K', 'J', '10', 'jade', 'coin', 'phoenix', 'ingot',
-    'A', 'K', 'dragon', 'jade', 'Q', 'J']
+  const board: SymbolId[] = ['Q', '9', 'K', 'J', '10', 'lotus', 'boat', 'chicken', 'tiger',
+    '9', 'K', 'tiger', 'lotus', 'Q', 'J']
   if (scenario === 'line' || scenario === 'multi') {
     for (let reel = 0; reel < 5; reel++) {
-      board[cellAt(reel, 1)] = reel === 2 ? 'wild' : 'dragon'
+      board[cellAt(reel, 1)] = reel === 2 ? 'wild' : 'tiger'
       if (scenario === 'multi') {
-        board[cellAt(reel, 0)] = 'phoenix'
-        board[cellAt(reel, 2)] = 'coin'
+        board[cellAt(reel, 0)] = 'chicken'
+        board[cellAt(reel, 2)] = 'boat'
       }
     }
   }
@@ -238,23 +243,23 @@ export function generateBoard(rng: Random, scenario?: Scenario, free = false): S
   return board
 }
 
-export function evaluateLines(board: SymbolId[], betPerLine: number, activeLines: number) {
+export function evaluateLines(board: SymbolId[], betPerLine: number, activeLines: number, legacyPaytable = false) {
+  const paytable: Partial<Record<SymbolId, { pays: readonly number[] | null }>> = legacyPaytable ? LEGACY_SYMBOLS : SYMBOLS
   const wins: LineWin[] = []
   for (let line = 0; line < activeLines; line++) {
     const positions = paylinePositions[line]
     const first = board[positions[0]]
-    if (!SYMBOLS[first].pays) continue
-    const candidates = first === 'wild' && WILD_RULES.substitutes ? payingSymbols : [first]
+    if (!paytable[first]?.pays) continue
+    const candidates = first === 'wild' ? legacyPayingSymbols : [first]
     let best: LineWin | undefined
     for (const symbol of candidates) {
-      if (symbol === 'wild' && !WILD_RULES.payOwnCombinations) continue
       let count = 0
       for (const position of positions) {
         const actual = board[position]
-        if (actual !== symbol && !(actual === 'wild' && WILD_RULES.substitutes && symbol !== 'wild')) break
+        if (actual !== symbol && actual !== 'wild') break
         count++
       }
-      const multiplier = SYMBOLS[symbol].pays?.[count - 3]
+      const multiplier = paytable[symbol]?.pays?.[count - 3]
       if (multiplier && (!best || multiplier > best.multiplier ||
         (multiplier === best.multiplier && count > best.positions.length))) {
         best = { line, symbol, positions: positions.slice(0, count), multiplier }

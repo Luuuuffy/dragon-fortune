@@ -18,18 +18,26 @@ export function bonusEntryChance(cells: number, orbChance: number) {
   return binomial(cells, orbChance).slice(BONUS.triggerCount).reduce((sum, probability) => sum + probability, 0)
 }
 
-// Probability that the underlying board fills from one independently drawn reel grid.
-export function grandBoardChance(cells: number, baseOrbChance: number) {
-  const full = Array.from({ length: cells + 1 }, () => [0])
-  full[cells] = Array<number>(BONUS.respins + 1).fill(1)
+// Unconditional expectations per reel board. Boards below the trigger contribute nothing.
+export function holdBoardMoments(cells: number, baseOrbChance: number) {
+  const endings = Array.from({ length: cells + 1 }, (_, held) =>
+    Array.from({ length: BONUS.respins + 1 }, () => ({ full: Number(held === cells), orbs: held })))
   for (let held = cells - 1; held >= BONUS.triggerCount; held--) {
     const hits = binomial(cells - held, BONUS.landingChance)
-    const additional = hits.slice(1).reduce((sum, probability, index) =>
-      sum + probability * full[held + index + 1][BONUS.respins], 0)
+    const additional = hits.slice(1).reduce((sum, probability, index) => {
+      const next = endings[held + index + 1][BONUS.respins]
+      return { full: sum.full + probability * next.full, orbs: sum.orbs + probability * next.orbs }
+    }, { full: 0, orbs: 0 })
     for (let remaining = 1; remaining <= BONUS.respins; remaining++) {
-      full[held][remaining] = hits[0] * full[held][remaining - 1] + additional
+      const miss = endings[held][remaining - 1]
+      endings[held][remaining] = { full: hits[0] * miss.full + additional.full, orbs: hits[0] * miss.orbs + additional.orbs }
     }
   }
-  return binomial(cells, baseOrbChance).reduce((sum, probability, held) =>
-    held < BONUS.triggerCount ? sum : sum + probability * full[held][BONUS.respins], 0)
+  return binomial(cells, baseOrbChance).reduce((sum, probability, held) => {
+    if (held < BONUS.triggerCount) return sum
+    const ending = endings[held][BONUS.respins]
+    return { full: sum.full + probability * ending.full, orbs: sum.orbs + probability * ending.orbs }
+  }, { full: 0, orbs: 0 })
 }
+
+export const grandBoardChance = (cells: number, baseOrbChance: number) => holdBoardMoments(cells, baseOrbChance).full

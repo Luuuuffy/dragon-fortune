@@ -60,6 +60,7 @@ const spin = (value: unknown, legacy: boolean): value is RecordValue =>
     : betting(value.betting) && value.bet === totalBetSen(value.betting) && value.lines === value.betting.lines) &&
   (value.jackpotPrizes === undefined || (betting(value.betting) &&
     samePrizes(value.jackpotPrizes, calculateJackpots(value.betting.denominationSen)))) &&
+  (value.paytableVersion === undefined || value.paytableVersion === 2) &&
   board(value.board) && (value.scenario === undefined ||
     (typeof value.scenario === 'string' && Object.hasOwn(SCENARIOS, value.scenario)))
 const result = (value: unknown): value is RecordValue => {
@@ -104,6 +105,8 @@ function validFeature(value: unknown, version: number): value is FreeSpins {
 function validRound(value: unknown, session: RecordValue, version: number) {
   if (!object(value)) return false
   const { phase, orbs, bonus } = value
+  if (value.collectionComplete !== undefined && (value.collectionComplete !== true ||
+      (phase !== 'FEATURE_HOLD_RESULT' && phase !== 'BONUS_RESULT' && phase !== 'JACKPOT_CELEBRATION'))) return false
   const rawFeature = version >= 4 ? session.freeSpins : null
   if (rawFeature !== null && !validFeature(rawFeature, version)) return false
   const feature = rawFeature as FreeSpins | null
