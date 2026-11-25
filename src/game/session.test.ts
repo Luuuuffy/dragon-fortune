@@ -96,6 +96,22 @@ describe('round transitions and persistence', () => {
     expect(dismissResult(collected, 'test').round.phase).toBe('IDLE')
   })
 
+  it('replays a seventh orb, resets the counter, and pays seven orbs after three misses', () => {
+    const ready = openBonus(revealSpin(begin('sixThenHit'), 'test'), 'test')
+    if (ready.round.phase !== 'BONUS_READY') throw new Error('Expected a six-orb bonus')
+    const held = ready.round.bonus.orbs
+    expect(held.filter(Boolean)).toHaveLength(6)
+    const pending = reload(startRespin(ready, rng))
+    if (pending.round.phase !== 'BONUS_RESPIN') throw new Error('Expected a pending respin')
+    const next = pending.round.bonus.next!
+    expect(next).toMatchObject({ landed: 1, remaining: 3, done: false })
+    expect(next.orbs.filter(Boolean)).toHaveLength(7)
+    held.forEach((orb, position) => { if (orb) expect(next.orbs[position]).toEqual(orb) })
+    let state = revealRespin(pending, 'test', 1)
+    for (let turn = 2; turn <= 4; turn++) state = revealRespin(startRespin(state, rng), 'test', turn)
+    expect(reload(state).last).toMatchObject({ bonus: 7 * 16, jackpot: 0 })
+  })
+
   it('includes any triggering line wins in the same final bonus settlement', () => {
     let draws = 0
     const state = startSpin(funded(), () => draws++ < CELLS || draws % 2 === 1 ? 0.999999 : 0.5, 'test')

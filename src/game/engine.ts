@@ -1,7 +1,7 @@
 import {
   CELLS, DEFAULT_BETTING, JACKPOT_TIERS, LEGACY_SYMBOLS, PAYLINES, REELS, ROWS, SYMBOLS, cellAt,
 } from './config'
-import { BONUS, binomial } from './bonusConfig'
+import { BONUS, binomial, respinLandingChance } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
 import { NON_ORB_WEIGHT, REEL_SYMBOL_WEIGHTS, REEL_WILD_ALLOWED, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS } from './probabilityConfig'
 import { calculateOrbPrize, orbMultiplierWeights } from './orbPrizes'
@@ -33,7 +33,8 @@ export const SCENARIOS = {
   line: 'Regular line win',
   multi: 'Multiple line wins',
   oneOrb: 'One gold orb',
-  six: 'Six-orb trigger',
+  six: 'Six-orb trigger (all respins miss)',
+  sixThenHit: 'Six orbs → seventh on first respin',
   seven: 'Seven-orb trigger',
   mini: 'MINI jackpot orb',
   minor: 'MINOR jackpot orb',
@@ -231,7 +232,7 @@ export function generateBoard(rng: Random, scenario?: Scenario, free = false): S
   if (scenario === 'full') return Array<SymbolId>(CELLS).fill('orb')
   if (scenario === 'grand') return Array.from({ length: CELLS }, (_, index) => index === CELLS - 1 ? 'J' : 'orb')
   if (scenario === 'oneOrb') board[4] = 'orb'
-  if (['six', 'seven', 'mini', 'minor', 'major', 'lanternBoth'].includes(scenario)) {
+  if (['six', 'sixThenHit', 'seven', 'mini', 'minor', 'major', 'lanternBoth'].includes(scenario)) {
     const cells = [0, 2, 4, 6, 10, 14, 8]
     cells.slice(0, scenario === 'seven' ? 7 : 6).forEach(cell => { board[cell] = 'orb' })
   }
@@ -305,13 +306,17 @@ export function startingOrbs(board: SymbolId[], rng: Random, wager: OrbWager, sc
 
 export function respin(orbs: Slots, remaining: number, rng: Random, wager: OrbWager, scenario?: Scenario) {
   let landed = 0
-  const next = orbs.map(orb => {
+  const held = orbs.filter(Boolean).length
+  const landingChance = respinLandingChance(held)
+  const testHit = scenario === 'sixThenHit' && held === BONUS.triggerCount
+    ? orbs.indexOf(null) : -1
+  const next = orbs.map((orb, position) => {
     if (orb) return orb
-    if (scenario === 'grand') {
+    if (scenario === 'grand' || position === testHit) {
       landed++
       return calculateOrbPrize(wager.denominationSen, wager.betSize, demoMultiplier)
     }
-    if (scenario || rng() >= BONUS.landingChance) return null
+    if (scenario || rng() >= landingChance) return null
     landed++
     return drawOrb(rng, true, wager)
   })

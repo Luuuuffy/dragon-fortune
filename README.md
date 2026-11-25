@@ -58,15 +58,17 @@ Red Lanterns on three or more reels of a paid board start six automatic Free Spi
 
 The settings include mute, master volume, separate music, reel-stop, orb, and jackpot volume, animation speed, reduced motion, game statistics, game reset, and developer tools. Enable **Developer test mode** under **Settings → Developer tools** to force an exact Lantern count, retriggers, a losing feature, or overlapping bonuses. The GRAND-on-first-respin scenario starts with 14 locked orbs and lands the last one on its first respin. These tests use the current virtual ledger. The selection applies to the next paid spin and its feature. The developer panel displays the active phase, counts, feature win, queued bonuses, and wager.
 
+To check a new orb landing, select **Six orbs → seventh on first respin**, close the developer panel, then choose **Spin** and **Respin**. The separate **Six-orb trigger (all respins miss)** scenario checks the three-miss ending. In ordinary play, a Hold & Spin that starts with six orbs finishes with 8.17 orbs on average and reaches eight or more about 76.2% of the time.
+
 ## Original demo mathematics
 
 - Each of the 15 cells has an independent Gold Orb draw with weight 16.6 out of 106.6. Hold & Spin requires at least six visible orbs. The modeled entry rate is 2.0034% per paid spin or Lantern Free Spin.
-- Reels 2–5 can each draw a stack of one to three adjacent Panda Wilds. The longest stack that fits is used when a Lantern or Gold Orb blocks the requested size. Free Spins have higher stack weights.
+- Reels 2–5 can each draw a stack of one to three adjacent Panda Wilds. The longest stack that fits is used when a Lantern or Gold Orb blocks the requested size. The stack roll requests a Wild on 16% of eligible paid reels and 39% of eligible Free Spin reels. The weight order is no stack, one Wild, two Wilds, then three Wilds. The paid weights are 84, 5.7, 5, and 5.3. The Free Spin weights are 61, 15, 12, and 12.
 - During Lantern Free Spins, a board with four or fewer Gold Orbs has a 35% roll to replace one regular paying symbol with an extra Gold Orb. Wilds and Lanterns stay in place. The extra orb can bring a board up to five orbs, preserving the six-orb trigger and the original distribution of starting orbs for Hold & Spin.
 - Bet per line is denomination × bet size. Total bet is bet per line × active lines. The first N paths are active. Panda Wilds substitute for standard symbols when matching from the first reel. Each line payout is its multiplier × bet per line, in integer sen.
-- During Hold & Spin, each empty position has an independent 1.1% chance to land an orb each respin. Existing orbs stay fixed. A hit restores three respins and a miss uses one.
+- During Hold & Spin, each empty position rolls independently. The number of held orbs at the start of the respin sets the chance per empty cell: 7.2% with 6–7 held, 2.0% with 8–9, 1.0% with 10–11, and 0.3% with 12–14. Existing orbs stay fixed. A hit restores three respins and a miss uses one.
 - An ordinary orb stores its multiplier, displayed number, and payout when it lands. **Displayed number = base units × bet size × multiplier. Payout in sen = displayed number × denomination in sen.** Default base units are 8, and `BASE_ORB_UNITS_BY_DENOMINATION` can override them. The number of lines enters the wager calculation only. At RM 2 with bet size 3 and a 5× orb, the face shows 120 and pays RM 240.
-- The configurable multiplier and weight pairs are 1× (40.7), 2× (25), 3× (16), 5× (14), 10× (3.7), 20× (0.45), 50× (0.13), 100× (0.018), and 200× (0.002). The engine normalizes enabled weights. `maxOrbMultiplier` defaults to 200 and may be raised to enable new tiers.
+- Ordinary orbs favor smaller multipliers to keep eight-line RTP near 92% as more orbs land. The configurable multiplier and weight pairs are 1× (62.3), 2× (24), 3× (8.6), 5× (3.3), 10× (1.2), 20× (0.45), 50× (0.13), 100× (0.018), and 200× (0.002). The engine normalizes enabled weights. `maxOrbMultiplier` defaults to 200 and may be raised to enable new tiers.
 - Each orb on a qualifying starting board or in Hold & Spin draws its type once. The chances are ordinary 99.82999%, MINI 0.15%, MINOR 0.02%, and MAJOR 0.00001%. Each special orb pays its stored jackpot.
 - MINI pays 5,000 × denomination in sen and MINOR pays 20,000 × denomination in sen. MAJOR pays RM 50,000 and GRAND pays RM 200,000. Filling all 15 Hold & Spin cells adds GRAND to the board’s other prizes.
 - Lantern Scatter pays 2× the total bet for exactly three, 4× for exactly four, or a configurable 8× demo prize for five. The scatter count is capped by the number of reels with room. The Lantern count draw preserves the Gold Orb distribution. Paid and free weights govern entry and retrigger rates, and tier weights tune the count. Free Spin settings must keep expected retrigger awards below one additional spin per spin played.
@@ -86,25 +88,32 @@ The settings include mute, master volume, separate music, reel-stop, orb, and ja
 | Lotus Flower | 8 | 30 | 100 |
 | Tiger | 10 | 50 | 200 |
 
-The [reel weight tables](src/game/probabilityConfig.ts) list independent weights for each of the five paid reels and each of the five Free Spins reels, in paytable order. Low ranks occupy most of the regular-symbol pool. Wild stacks, Lanterns, and orbs use separate probabilities.
+The [reel weight configuration](src/game/probabilityConfig.ts) gives each of the nine standard symbols the same 1-in-9 chance whenever a cell draws a standard symbol. This applies on all five reels in paid spins and Free Spins. Wild stacks, Lanterns, and Gold Orbs use separate probabilities.
 
 ### Rebalancing audit
 
 The previous 10¢ × 1 × 8-line game hit a payline on 10.11% of paid spins and had a 27.69% zero-payout Free Spins rate, excluding the opening Scatter. The one-million-spin baseline returned 549.00% overall, with 429.00 percentage points from jackpots. Rare wins explain why short sessions could feel dry despite the high overall return. The audit found that the ordinary evaluator already paid the best eligible match on each enabled line and the settlement already included bonus prizes.
 
-All results use seed 2026. The modeled estimate combines simulated line and Scatter returns with Hold & Spin expectations calculated from the distribution of initial orbs, possible impacts on every respin, and the three-miss end condition. It includes each jackpot, even when the run observes zero awards for a tier.
+The table uses seed 2026. The modeled estimate combines simulated line and Scatter returns with Hold & Spin expectations calculated from the distribution of initial orbs, possible impacts on every respin, and the three-miss end condition. It includes each jackpot, even when the run observes zero awards for a tier.
 
-| Denomination × size × lines | Paid spins | Sample RTP | RTP with modeled Hold & Spin | Paid line hits | Zero-payout Free Spins |
+| Configuration and wager | Paid spins | Sample RTP | RTP with modeled Hold & Spin | Paid line hits | Zero-payout Free Spins |
 |---|---:|---:|---:|---:|---:|
-| 10¢ × 1 × 8, previous | 1,000,000 | 549.00% | — | 10.11% | 27.69% |
-| 10¢ × 1 × 8 | 100,000 | 91.01% | 91.40% | 31.69% | 4.40% |
-| 10¢ × 1 × 8 | 1,000,000 | 92.57% | 91.63% | 31.56% | 4.93% |
-| 1¢ × 1 × 8, default | 1,000,000 | 92.57% | 92.76% | 31.56% | 4.93% |
-| 50¢ × 5 × 38 | 1,000,000 | 40.67% | 40.67% | 49.12% | 0.74% |
+| Original, 10¢ × 1 × 8 | 1,000,000 | 549.00% | — | 10.11% | 27.69% |
+| Rank-weighted, 10¢ × 1 × 8 | 100,000 | 91.01% | 91.40% | 31.69% | 4.40% |
+| Rank-weighted, 10¢ × 1 × 8 | 1,000,000 | 92.57% | 91.63% | 31.56% | 4.93% |
+| Rank-weighted, 1¢ × 1 × 8 | 1,000,000 | 92.57% | 92.76% | 31.56% | 4.93% |
+| Rank-weighted, 50¢ × 5 × 38 | 1,000,000 | 40.67% | 40.67% | 49.12% | 0.74% |
+| Equal weights with original Wild odds, 10¢ × 1 × 8 | 1,000,000 | 77.26% | 76.32% | 8.66% | 34.92% |
+| Equal weights with revised Wild odds, 10¢ × 1 × 8 | 1,000,000 | 99.00% | 91.45% | 12.82% | 11.91% |
+| Equal weights with revised Wild odds, 1¢ × 1 × 8 | 1,000,000 | 155.25% | 92.58% | 12.82% | 11.91% |
+| Current Hold & Spin rates, 10¢ × 1 × 8 | 1,000,000 | 91.92% | 91.30% | 12.82% | 11.52% |
+| Current Hold & Spin rates, 1¢ × 1 × 8 | 1,000,000 | 91.92% | 92.51% | 12.82% | 11.52% |
 
-At 10¢ × 1 × 8, the million-spin sample returned 23.59% from paid lines, 3.80% from opening Scatters, 4.21% from Free Spins lines and Scatters, 38.47% from ordinary Hold & Spin orbs, and 22.50% from jackpots. Hold & Spin entered on 1.9961% of paid spins, and Free Spins retriggered on 3.1324% of free boards. The averages were RM 21.97 per Hold & Spin and RM 4.88 per Lantern feature after the opening Scatter. There were 236 MINI and 31 MINOR awards and zero MAJOR or GRAND awards. GRAND is modeled at about 1.20 per billion reel boards.
+Before the Hold & Spin landing-rate change, the 10¢ × 1 × 8 million-spin sample with revised Wild odds returned 19.02% from paid lines, 3.90% from opening Scatters, 8.50% from Free Spins lines and Scatters, 38.77% from ordinary Hold & Spin orbs, and 28.81% from jackpots. Hold & Spin entered on 2.0108% of paid spins, and Free Spins retriggered on 3.0658% of free boards. The averages were RM 24.19 per Hold & Spin and RM 10.03 per Lantern feature after the opening Scatter. There were 229 MINI, 33 MINOR, one MAJOR, and zero GRAND awards. That one MAJOR contributed 6.25 percentage points to the raw 10¢ return and 62.50 points at 1¢. A second million-spin run at 10¢ with seed 6026 measured 89.84% sample RTP and 91.32% with modeled Hold & Spin prizes. The prior GRAND rate was about 1.20 per billion reel boards.
 
-Calibration targets the eight-line wager. An increase in lines raises the stake while keeping individual orb prizes the same. Higher line counts therefore have materially lower modeled RTP under these rules. All figures describe the original virtual game.
+With the current Hold & Spin rates, the seed 2026 runs averaged 8.17 final orbs from exactly six and 8.24 across all starts. About 76.1% of six-orb starts reached eight or more. The exact model gives 8.17, 8.24, and 76.2%, respectively, with about 0.73 GRAND awards per billion reel boards.
+
+The eight-line calibration uses Panda Wild stacks to increase line matches while keeping all nine standard-symbol weights equal. RTP varies by wager because active lines scale the total wager and orb prizes use denomination and bet size. All figures describe the original virtual game.
 
 ## Recovery
 

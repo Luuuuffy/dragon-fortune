@@ -40,6 +40,10 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
   const components = { line: 0, scatter: 0, freeLinesAndScatter: 0, ordinaryOrbs: 0, jackpots: 0 }
   let triggers = 0
   let holdTriggers = 0
+  let holdFinalOrbs = 0
+  let sixOrbStarts = 0
+  let sixOrbFinalOrbs = 0
+  let sixOrbStartsReachingEight = 0
   let hits = 0
   let lineHits = 0
   const paidLanternCounts = [0, 0, 0, 0, 0, 0]
@@ -65,6 +69,13 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
       const next = respin(orbs, remaining, rng, wager)
       remaining = next.remaining
       orbs = next.orbs
+    }
+    const finalCount = orbs.filter(Boolean).length
+    holdFinalOrbs += finalCount
+    if (held.filter(Boolean).length === BONUS.triggerCount) {
+      sixOrbStarts++
+      sixOrbFinalOrbs += finalCount
+      if (finalCount >= 8) sixOrbStartsReachingEight++
     }
     const result = settleBonus(orbs, jackpotPrizes)
     const payout = result.bonus + result.jackpot
@@ -127,6 +138,7 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
     won += amount
     if (amount > 0) hits++
   }
-  return { spins, won, bonusWon, components, triggers, hits, lineHits, jackpotCounts, jackpotHits, holdTriggers, lanternTriggers,
+  return { spins, won, bonusWon, components, triggers, hits, lineHits, jackpotCounts, jackpotHits, holdTriggers,
+    holdFinalOrbs, sixOrbStarts, sixOrbFinalOrbs, sixOrbStartsReachingEight, lanternTriggers,
     freeRetriggers, freePlayed, freeGoldOrbs, freeLineHits, freeHoldTriggers, freeWon, freeZeroPayouts, paidLanternCounts, freeLanternCounts }
 }

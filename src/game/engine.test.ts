@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { BET_SIZES, CELLS, DENOMINATIONS_SEN, LINE_OPTIONS, PAYLINES, SYMBOLS,
+import { BET_SIZES, CELLS, DENOMINATIONS_SEN, LINE_OPTIONS, PAYLINES, REELS, ROWS, SYMBOLS,
   betPerLineSen, calculateJackpots, cellAt, money, totalBetSen } from './config'
-import { BONUS, bonusEntryChance, grandBoardChance } from './bonusConfig'
+import { BONUS, bonusEntryChance, grandBoardChance, holdBoardMoments, respinLandingChance } from './bonusConfig'
 import { calculateOrbPrize, configureOrbMultipliers, orbMultiplierWeights } from './orbPrizes'
+import { REGULAR_SYMBOL_ORDER } from './probabilityConfig'
 import type { SymbolId } from './config'
 import { baseOrbChance, drawOrb, evaluateLines, generateBoard, respin, seededRandom,
   settleBonus, startingOrbs, triggersBonus } from './engine'
@@ -60,6 +61,26 @@ describe('bets, paylines and jackpot scaling', () => {
     for (const first of ['wild', 'lantern', 'orb'] as const) {
       board[cellAt(0, 1)] = first
       expect(evaluateLines(board, 80, 1).amount).toBe(0)
+    }
+  })
+
+  it.each([false, true])('lands standard symbols equally often per reel (Free Spins: %s)', free => {
+    const rng = seededRandom(2026)
+    const counts = Array.from({ length: REELS }, () => new Map<SymbolId, number>(
+      REGULAR_SYMBOL_ORDER.map(symbol => [symbol, 0]),
+    ))
+    for (let spin = 0; spin < 10_000; spin++) {
+      generateBoard(rng, undefined, free).forEach((symbol, position) => {
+        const reel = counts[Math.floor(position / ROWS)]
+        const count = reel.get(symbol)
+        if (count !== undefined) reel.set(symbol, count + 1)
+      })
+    }
+    for (const reel of counts) {
+      const total = [...reel.values()].reduce((sum, count) => sum + count, 0)
+      for (const count of reel.values()) {
+        expect(Math.abs(count / total - 1 / REGULAR_SYMBOL_ORDER.length)).toBeLessThan(0.01)
+      }
     }
   })
 
@@ -147,24 +168,38 @@ describe('Hold & Spin', () => {
     expect(drawOrb(() => 0.99999999, false, wager)).toMatchObject({ multiplier: BONUS.maxOrbMultiplier })
   })
 
-  it('uses a separate chance for respins and keeps GRAND possible and rare', () => {
-    const held = startingOrbs(generateBoard(rng, 'six'), rng, wager, 'six')
-    const miss = vi.fn(() => BONUS.landingChance)
-    expect(respin(held, 3, miss, wager).landed).toBe(0)
-    expect(miss).toHaveBeenCalledTimes(9)
-    expect(respin(held, 3, () => BONUS.landingChance - 0.001, wager).landed).toBe(9)
-    expect(baseOrbChance).toBeGreaterThan(BONUS.landingChance)
+  it.each([[6, 0.072], [7, 0.072], [8, 0.02], [9, 0.02], [10, 0.01], [11, 0.01], [12, 0.003], [14, 0.003]])(
+    'uses one %i-orb landing tier for the entire respin at chance %f', (count, chance) => {
+      const prize = calculateOrbPrize(10, 1, 2)
+      const held = Array.from({ length: CELLS }, (_, index) => index < count ? prize : null)
+      const miss = vi.fn(() => chance)
+      expect(respinLandingChance(count)).toBe(chance)
+      expect(respin(held, 3, miss, wager).landed).toBe(0)
+      expect(miss).toHaveBeenCalledTimes(CELLS - count)
+      expect(respin(held, 3, () => chance - 0.001, wager).landed).toBe(CELLS - count)
+    },
+  )
+
+  it('models at least eight final orbs from a six-orb start and keeps GRAND rare and possible', () => {
+    const board = holdBoardMoments(CELLS, baseOrbChance)
+    expect(board.fromTrigger.orbs).toBeGreaterThanOrEqual(8)
+    expect(board.fromTrigger.eightOrMore).toBeGreaterThan(0.70)
     expect(grandBoardChance(CELLS, baseOrbChance)).toBeGreaterThan(0)
-    expect(grandBoardChance(CELLS, baseOrbChance)).toBeLessThan(0.0001)
+    expect(board.full).toBeLessThan(0.000000002)
   })
 
   it('measures a seeded simulation near the target without changing the six-orb rule', () => {
     const result = simulate({ spins: 100_000, denominationSen: 10, bet: 80, perLine: 10, lines: 8, seed: 2026 })
     expect(Object.values(result.components).reduce((sum, value) => sum + value, 0)).toBe(result.won)
-    expect(result.lineHits / result.spins).toBeGreaterThan(0.25)
-    expect(result.lineHits / result.spins).toBeLessThan(0.35)
+    const { line, scatter, freeLinesAndScatter } = result.components
+    const hold = expectedHoldPayout(10, 1)
+    const modeledRtp = ((line + scatter + freeLinesAndScatter) / result.spins + hold.ordinaryOrbs + hold.jackpots) / 80
+    expect(Math.abs(modeledRtp - 0.92)).toBeLessThan(0.025)
+    expect(result.lineHits).toBeGreaterThan(0)
     expect(result.freeZeroPayouts / result.lanternTriggers).toBeLessThan(0.15)
-    expect(expectedHoldPayout(10, 1).grandAwards).toBeGreaterThan(0)
+    expect(hold.grandAwards).toBeGreaterThan(0)
+    expect(result.sixOrbFinalOrbs / result.sixOrbStarts).toBeGreaterThan(8)
+    expect(result.holdFinalOrbs / result.holdTriggers).toBeGreaterThan(8)
     expect(result.spins).toBe(100_000)
     expect(result.triggers / result.spins).toBeGreaterThan(0.018)
     expect(result.triggers / result.spins).toBeLessThan(0.022)
