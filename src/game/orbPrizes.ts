@@ -1,11 +1,13 @@
 import { BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CURRENT_MATH_VERSION,
-  DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION, LINE_OPTIONS, ORB_VARIETY_VERSION, credits } from './config'
+  DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION, LINE_OPTIONS, ORB_VARIETY_VERSION,
+  RICH_BONUS_VERSION, credits } from './config'
 import type { Jackpot, JackpotPrizes, PaytableVersion } from './config'
 import { BONUS, BONUS_REBALANCE_HIGH_MIX_BPS, BONUS_REBALANCE_HIGH_WEIGHTS, BONUS_REBALANCE_LOW_WEIGHTS,
   CURRENT_HIGH_ORB_WEIGHTS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_ORB_HIGH_MIX_BPS, CURRENT_ORB_MULTIPLIERS,
   EARLY_RESPIN_HIGH_MIX_BPS, HIGH_ORB_WEIGHTS, LATE_RESPIN_HIGH_MIX_BPS, LATE_RESPIN_MINIMUM_MIX_BPS, LEGACY_ORB_UNITS,
   LOW_ORB_WEIGHTS, MINIMUM_WAGER_ORB_HIGH_MIX_BPS, ORB_HIGH_MIX_BPS, ORB_VARIETY_HIGH_MIX_BPS,
-  ORB_VARIETY_HIGH_WEIGHTS, ORB_VARIETY_LOW_WEIGHTS } from './probabilityConfig'
+  ORB_VARIETY_HIGH_WEIGHTS, ORB_VARIETY_LOW_WEIGHTS, RICH_BONUS_HIGH_MIX_BPS, RICH_BONUS_HIGH_WEIGHTS,
+  RICH_BONUS_LOW_WEIGHTS, RICH_BONUS_MINIMUM_MIX_BPS } from './probabilityConfig'
 
 export type OrdinaryOrb = { value: number; multiplier: number | null; payoutSen: number; displayMyr?: true }
 export type Orb = OrdinaryOrb | { tier: Exclude<Jackpot, 'grand'>; payoutSen: number }
@@ -71,10 +73,12 @@ const wagerWeights = {
   [ORB_VARIETY_VERSION]: buildWagerWeights(ORB_VARIETY_HIGH_MIX_BPS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
   [EARLY_RESPIN_VERSION]: buildWagerWeights(EARLY_RESPIN_HIGH_MIX_BPS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
   [LATE_RESPIN_VERSION]: buildWagerWeights(LATE_RESPIN_HIGH_MIX_BPS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
+  [RICH_BONUS_VERSION]: buildWagerWeights(RICH_BONUS_HIGH_MIX_BPS, RICH_BONUS_LOW_WEIGHTS, RICH_BONUS_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
   [CURRENT_MATH_VERSION]: buildWagerWeights(CURRENT_ORB_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
 }
 const minimumWagerWeights = {
   [LATE_RESPIN_VERSION]: blendOrbWeights(LATE_RESPIN_MINIMUM_MIX_BPS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
+  [RICH_BONUS_VERSION]: blendOrbWeights(RICH_BONUS_MINIMUM_MIX_BPS, RICH_BONUS_LOW_WEIGHTS, RICH_BONUS_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
   [CURRENT_MATH_VERSION]: blendOrbWeights(MINIMUM_WAGER_ORB_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
 }
 
@@ -85,8 +89,10 @@ export function orbWeightsForWager({ denominationSen, bet, paytableVersion = CUR
   Pick<OrbWager, 'denominationSen' | 'bet' | 'paytableVersion'>) {
   if (paytableVersion === 1 || paytableVersion === 2 || paytableVersion === CREDIT_PAYTABLE_VERSION) return orbMultiplierWeights
   const totalCredits = bet / denominationSen
-  if (isMinimumOrbWager(denominationSen, totalCredits) &&
-      (paytableVersion === LATE_RESPIN_VERSION || paytableVersion === CURRENT_MATH_VERSION)) return minimumWagerWeights[paytableVersion]
+  if ((paytableVersion === LATE_RESPIN_VERSION || paytableVersion === RICH_BONUS_VERSION ||
+      paytableVersion === CURRENT_MATH_VERSION) && isMinimumOrbWager(denominationSen, totalCredits)) {
+    return minimumWagerWeights[paytableVersion]
+  }
   const weights = wagerWeights[paytableVersion].get(totalCredits)
   if (!weights) throw new RangeError('Unsupported total credits for the ordinary orb distribution.')
   return weights

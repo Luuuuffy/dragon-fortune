@@ -65,10 +65,11 @@ export const BONUS_REBALANCE_VERSION = 5
 export const ORB_VARIETY_VERSION = 6
 export const EARLY_RESPIN_VERSION = 7
 export const LATE_RESPIN_VERSION = 8
-export const CURRENT_MATH_VERSION = 9
+export const RICH_BONUS_VERSION = 9
+export const CURRENT_MATH_VERSION = 10
 export type PaytableVersion = 1 | 2 | typeof CREDIT_PAYTABLE_VERSION | typeof DESIGN_B_VERSION |
   typeof BONUS_REBALANCE_VERSION | typeof ORB_VARIETY_VERSION | typeof EARLY_RESPIN_VERSION |
-  typeof LATE_RESPIN_VERSION | typeof CURRENT_MATH_VERSION
+  typeof LATE_RESPIN_VERSION | typeof RICH_BONUS_VERSION | typeof CURRENT_MATH_VERSION
 const standardLineCredits = { 3: 10, 4: 25, 5: 100 } as const
 export const CREDIT_V3_LINE_AWARDS = {
   '9': standardLineCredits, '10': standardLineCredits, J: standardLineCredits, Q: standardLineCredits,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION,
-  ORB_VARIETY_VERSION, calculateJackpots, cellAt,
+  ORB_VARIETY_VERSION, RICH_BONUS_VERSION, calculateJackpots, cellAt,
   legacyJackpots, parseBankroll, START_BALANCE, totalBetSen } from './config'
 import { calculateOrbPrize } from './orbPrizes'
 import type { Scenario } from './engine'
@@ -70,7 +70,7 @@ describe('round transitions and persistence', () => {
   it.each([
     [DESIGN_B_VERSION, 6, 0.10, 0], [ORB_VARIETY_VERSION, 6, 0.10, 0],
     [EARLY_RESPIN_VERSION, 6, 0.10, 1], [EARLY_RESPIN_VERSION, 10, 0.015, 0],
-    [LATE_RESPIN_VERSION, 10, 0.0215, 0], [CURRENT_MATH_VERSION, 10, 0.0215, 1],
+    [LATE_RESPIN_VERSION, 10, 0.0215, 0], [RICH_BONUS_VERSION, 10, 0.03, 0], [CURRENT_MATH_VERSION, 10, 0.03, 1],
   ] as const)(
     'keeps profile %i respin odds after reloading with %i held', (paytableVersion, held, landingRoll, landed) => {
       const active = begin('six')

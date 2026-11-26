@@ -1,13 +1,14 @@
 import {
   BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS, CURRENT_MATH_VERSION,
-  DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_SYMBOLS, LINE_CREDITS, ORB_VARIETY_VERSION,
+  DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_SYMBOLS, LINE_CREDITS, ORB_VARIETY_VERSION, RICH_BONUS_VERSION,
   PAYLINES, REELS, ROWS, SYMBOLS, cellAt, totalBetSen,
 } from './config'
 import { BONUS, binomial, respinLandingChance } from './bonusConfig'
 import { LANTERN, LEGACY_LANTERN_PAYOUTS } from './lanternConfig'
 import { BONUS_REBALANCE_FREE_ORB_CHANCE, BONUS_REBALANCE_ORB_TYPES, BONUS_REBALANCE_WILD_WEIGHTS,
-  CREDIT_V3_FREE_WEIGHTS, CREDIT_V3_WILD_WEIGHTS, CURRENT_ORB_TYPES, DESIGN_B_ORB_TYPES, FREE_ORB_CHANCE, NON_ORB_WEIGHT,
-  ORB_VARIETY_PAID_ORB_CHANCE, PAID_ORB_CHANCE,
+  CREDIT_V3_FREE_WEIGHTS, CREDIT_V3_WILD_WEIGHTS, CURRENT_FREE_WILD_WEIGHTS, CURRENT_ORB_TYPES, DESIGN_B_ORB_TYPES,
+  FREE_ORB_CHANCE, NON_ORB_WEIGHT, ORB_VARIETY_PAID_ORB_CHANCE, ORB_VARIETY_TYPES, PAID_ORB_CHANCE,
+  RICH_BONUS_FREE_CHANCE, RICH_BONUS_PAID_CHANCE,
   REEL_SYMBOL_WEIGHTS, REEL_WILD_ALLOWED, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS } from './probabilityConfig'
 import { calculateOrbPrize, ordinaryOrbDistributions, orbMultiplierWeights, orbWeightsForWager, priceWagerOrb } from './orbPrizes'
 import type { Orb, OrbWager } from './orbPrizes'
@@ -102,6 +103,7 @@ const previousOrbChance = BONUS.baseOrbWeight / symbolTotal
 export const baseOrbChance = PAID_ORB_CHANCE
 export function boardOrbChance(free: boolean, version: PaytableVersion = CURRENT_MATH_VERSION) {
   if (version === CURRENT_MATH_VERSION) return free ? FREE_ORB_CHANCE : baseOrbChance
+  if (version === RICH_BONUS_VERSION) return free ? RICH_BONUS_FREE_CHANCE : RICH_BONUS_PAID_CHANCE
   if (free) return version >= BONUS_REBALANCE_VERSION ? BONUS_REBALANCE_FREE_ORB_CHANCE : previousOrbChance
   return version >= ORB_VARIETY_VERSION ? ORB_VARIETY_PAID_ORB_CHANCE : previousOrbChance
 }
@@ -186,8 +188,12 @@ export function lanternReels(lanternWeight: number, tierWeights: readonly [numbe
   }
 }
 const paidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.paid)
-const freeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.free,
+const freeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, CURRENT_FREE_WILD_WEIGHTS,
   REEL_SYMBOL_WEIGHTS.free, FREE_ORB_CHANCE)
+const richBonusPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.paid,
+  REEL_SYMBOL_WEIGHTS.paid, RICH_BONUS_PAID_CHANCE)
+const richBonusFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.free,
+  REEL_SYMBOL_WEIGHTS.free, RICH_BONUS_FREE_CHANCE)
 const varietyPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.paid,
   REEL_SYMBOL_WEIGHTS.paid, ORB_VARIETY_PAID_ORB_CHANCE)
 const rebalanceFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.free,
@@ -207,6 +213,7 @@ const legacyFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights
 
 function reelsFor(free: boolean, version: PaytableVersion) {
   if (version === CURRENT_MATH_VERSION) return free ? freeReels : paidReels
+  if (version === RICH_BONUS_VERSION) return free ? richBonusFreeReels : richBonusPaidReels
   if (free) {
     if (version >= BONUS_REBALANCE_VERSION) return rebalanceFreeReels
     if (version === DESIGN_B_VERSION) return designBFreeReels
@@ -240,9 +247,11 @@ function orbTypeTable(weights: Readonly<Record<typeof orbTypes[number], number>>
 const designBOrbTypes = orbTypeTable(DESIGN_B_ORB_TYPES)
 const rebalanceOrbTypes = orbTypeTable(BONUS_REBALANCE_ORB_TYPES)
 const currentOrbTypes = orbTypeTable(CURRENT_ORB_TYPES)
+const varietyOrbTypes = orbTypeTable(ORB_VARIETY_TYPES)
 const previousOrbTypes = orbTypeTable(BONUS.orbTypeWeights)
 function orbTypesForVersion(version: PaytableVersion = CURRENT_MATH_VERSION) {
-  if (version >= ORB_VARIETY_VERSION) return currentOrbTypes
+  if (version === CURRENT_MATH_VERSION) return currentOrbTypes
+  if (version >= ORB_VARIETY_VERSION) return varietyOrbTypes
   if (version === BONUS_REBALANCE_VERSION) return rebalanceOrbTypes
   return version === DESIGN_B_VERSION ? designBOrbTypes : previousOrbTypes
 }

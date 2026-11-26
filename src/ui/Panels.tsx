@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS,
-  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_TIERS, LATE_RESPIN_VERSION, ORB_VARIETY_VERSION,
+  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_TIERS, LATE_RESPIN_VERSION,
+  ORB_VARIETY_VERSION, RICH_BONUS_VERSION,
   LINE_CREDITS, LINE_OPTIONS, PAYLINES, SYMBOLS, betPerLineSen, calculateJackpots, denominationLabel, money, totalBetSen,
   wagerCredits } from '../game/config'
 import { BONUS, bonusEntryChance, respinRates } from '../game/bonusConfig'
@@ -70,7 +71,8 @@ const theoreticalRtp = {
   [ORB_VARIETY_VERSION]: '91.08–92.92%',
   [EARLY_RESPIN_VERSION]: '91.00–93.00%',
   [LATE_RESPIN_VERSION]: '91.28–92.72%',
-  [CURRENT_MATH_VERSION]: '97.60–99.40%',
+  [RICH_BONUS_VERSION]: '97.60–99.40%',
+  [CURRENT_MATH_VERSION]: '93.52–97.99%',
 }
 
 function Paytable({ betting, version, prizes }: { betting: Betting; version: PaytableVersion; prizes: JackpotPrizes }) {
@@ -101,7 +103,8 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
     <h3>Red Lantern Scatter</h3>
     <p>Each reel can show one Lantern. A paid trigger starts {LANTERN.initialSpins} automatic Free Spins.
       A qualifying Free Spin awards {LANTERN.extraSpins} more. Chicken, Boat, Lotus and Tiger are the paying symbols in Free Spins.</p>
-    {version === CURRENT_MATH_VERSION && <p>About one in three complete Lantern features leads to Hold &amp; Spin, including any retriggers.</p>}
+    {version === CURRENT_MATH_VERSION && <p>About 28% of complete Lantern features lead to Hold &amp; Spin, including retriggers.</p>}
+    {version === RICH_BONUS_VERSION && <p>About one in three complete Lantern features leads to Hold &amp; Spin, including retriggers.</p>}
     <ul className="orb-values">
       {([3, 4, 5] as const).map(count => <li key={count}><b>{count} Lanterns</b> {LANTERN.payouts[count]}× total bet · {money(bet * LANTERN.payouts[count])}</li>)}
     </ul>
@@ -111,8 +114,11 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
       A new orb restores three respins. Ordinary orb faces show credits below RM1 denomination and virtual MYR at RM1 and RM2.
       Each ordinary orb pays the triggering spin’s total bet × its multiplier.</p>
     <ul className="orb-values">
-      {rates.map(([limit, chance], index) =>
-        <li key={limit}><b>{rates[index - 1]?.[0] ?? BONUS.triggerCount}–{limit - 1} held</b> {percent(chance)} per empty cell</li>)}
+      {rates.map(([limit, chance], index) => {
+        const first = rates[index - 1]?.[0] ?? BONUS.triggerCount
+        const last = limit - 1
+        return <li key={limit}><b>{first === last ? first : `${first}–${last}`} held</b> {percent(chance)} per empty cell</li>
+      })}
     </ul>
     {scaled && <p>Ordinary multiplier chances depend on Bet Size × Active Lines.
       {version >= LATE_RESPIN_VERSION && isMinimumOrbWager(denominationSen, totalCredits) &&

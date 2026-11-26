@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import {
   BET_SIZES, BONUS_REBALANCE_VERSION, CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, LINE_OPTIONS, PAYLINES, LINE_CREDITS,
-  EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION, ORB_VARIETY_VERSION, calculateJackpots, totalBetSen, wagerCredits,
+  EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION, ORB_VARIETY_VERSION, RICH_BONUS_VERSION, calculateJackpots, totalBetSen, wagerCredits,
 } from '../src/game/config'
 import { BONUS } from '../src/game/bonusConfig'
 import { LANTERN } from '../src/game/lanternConfig'
@@ -10,10 +10,12 @@ import { REEL_SYMBOL_WEIGHTS, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS, NON_ORB_
   LOW_ORB_WEIGHTS, HIGH_ORB_WEIGHTS, ORB_HIGH_MIX_BPS, BONUS_REBALANCE_WILD_WEIGHTS, BONUS_REBALANCE_ORB_TYPES,
   BONUS_REBALANCE_LOW_WEIGHTS, BONUS_REBALANCE_HIGH_WEIGHTS, BONUS_REBALANCE_HIGH_MIX_BPS, BONUS_REBALANCE_RESPIN_RATES,
   CURRENT_ORB_TYPES, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_HIGH_MIX_BPS, CURRENT_ORB_MULTIPLIERS,
-  BONUS_REBALANCE_FREE_ORB_CHANCE, CURRENT_RESPIN_RATES, EARLY_RESPIN_HIGH_MIX_BPS, EARLY_RESPIN_RATES, FREE_ORB_CHANCE,
+  BONUS_REBALANCE_FREE_ORB_CHANCE, CURRENT_FREE_WILD_WEIGHTS, CURRENT_RESPIN_RATES, EARLY_RESPIN_HIGH_MIX_BPS, EARLY_RESPIN_RATES, FREE_ORB_CHANCE,
   LATE_RESPIN_HIGH_MIX_BPS, LATE_RESPIN_MINIMUM_MIX_BPS, LATE_RESPIN_RATES, MINIMUM_WAGER_ORB_HIGH_MIX_BPS,
   ORB_VARIETY_HIGH_MIX_BPS, ORB_VARIETY_HIGH_WEIGHTS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_PAID_ORB_CHANCE,
-  PAID_ORB_CHANCE } from '../src/game/probabilityConfig'
+  ORB_VARIETY_TYPES, PAID_ORB_CHANCE, RICH_BONUS_FREE_CHANCE, RICH_BONUS_HIGH_MIX_BPS, RICH_BONUS_HIGH_WEIGHTS,
+  RICH_BONUS_LOW_WEIGHTS, RICH_BONUS_MINIMUM_MIX_BPS, RICH_BONUS_PAID_CHANCE, RICH_BONUS_RESPIN_RATES,
+} from '../src/game/probabilityConfig'
 import { orbWeightsForWager } from '../src/game/orbPrizes'
 import { expectedHoldPayout } from '../src/game/simulation'
 
@@ -35,14 +37,17 @@ const versionFlags = {
   '--profile-6': ORB_VARIETY_VERSION,
   '--profile-7': EARLY_RESPIN_VERSION,
   '--profile-8': LATE_RESPIN_VERSION,
+  '--profile-9': RICH_BONUS_VERSION,
 } as const
 const versionFlag = Object.keys(versionFlags).find(flag => process.argv.includes(flag)) as keyof typeof versionFlags | undefined
 const version = versionFlag ? versionFlags[versionFlag] : CURRENT_MATH_VERSION
 const designB = version === DESIGN_B_VERSION
 const current = version === CURRENT_MATH_VERSION
+const richBonus = version === RICH_BONUS_VERSION
 const expandedOrbs = version >= ORB_VARIETY_VERSION
 function boardChance(isFree: boolean) {
   if (current) return isFree ? FREE_ORB_CHANCE : PAID_ORB_CHANCE
+  if (richBonus) return isFree ? RICH_BONUS_FREE_CHANCE : RICH_BONUS_PAID_CHANCE
   if (isFree) return designB ? previousOrbChance : BONUS_REBALANCE_FREE_ORB_CHANCE
   return expandedOrbs ? ORB_VARIETY_PAID_ORB_CHANCE : previousOrbChance
 }
@@ -52,9 +57,11 @@ const respinRates = {
   [ORB_VARIETY_VERSION]: BONUS_REBALANCE_RESPIN_RATES,
   [EARLY_RESPIN_VERSION]: EARLY_RESPIN_RATES,
   [LATE_RESPIN_VERSION]: LATE_RESPIN_RATES,
+  [RICH_BONUS_VERSION]: RICH_BONUS_RESPIN_RATES,
   [CURRENT_MATH_VERSION]: CURRENT_RESPIN_RATES,
 }[version]
-const wildWeights = designB ? WILD_STACK_WEIGHTS : BONUS_REBALANCE_WILD_WEIGHTS
+const wildWeights = current ? { paid: BONUS_REBALANCE_WILD_WEIGHTS.paid, free: CURRENT_FREE_WILD_WEIGHTS }
+  : designB ? WILD_STACK_WEIGHTS : BONUS_REBALANCE_WILD_WEIGHTS
 const reelCache = new Map<string, [number, number][]>()
 const lanternCache = new Map<string, number>()
 
@@ -257,8 +264,10 @@ for (let step = 0; step < 40; step++) {
     (freeEntry - freeScatterWithHold) * noHoldBranch ** LANTERN.extraSpins
 }
 const freeFeatureWithHold = 1 - noHoldBranch ** LANTERN.initialSpins
-if (current) assert(Math.abs(freeFeatureWithHold - 1 / 3) < 0.00001, 'Expected Hold & Spin in one-third of Lantern features')
-const typeWeights = expandedOrbs ? CURRENT_ORB_TYPES : designB ? DESIGN_B_ORB_TYPES : BONUS_REBALANCE_ORB_TYPES
+if (richBonus) assert(Math.abs(freeFeatureWithHold - 1 / 3) < 0.00001)
+if (current) assert(Math.abs(holdEntry - 1 / 50) < 0.0001, 'Expected Hold & Spin on about one in 50 paid spins')
+const typeWeights = current ? CURRENT_ORB_TYPES : expandedOrbs ? ORB_VARIETY_TYPES
+  : designB ? DESIGN_B_ORB_TYPES : BONUS_REBALANCE_ORB_TYPES
 const totalTypeWeight = sum(Object.values(typeWeights))
 const types = {
   ordinary: typeWeights.ordinary / totalTypeWeight,
@@ -287,9 +296,9 @@ const wagers = DENOMINATIONS_SEN.flatMap(denominationSen => BET_SIZES.flatMap(be
   return { ...betting, bet, totalCredits, fixed }
 })))
 
-const low = current ? CURRENT_LOW_ORB_WEIGHTS : expandedOrbs ? ORB_VARIETY_LOW_WEIGHTS
+const low = current ? CURRENT_LOW_ORB_WEIGHTS : richBonus ? RICH_BONUS_LOW_WEIGHTS : expandedOrbs ? ORB_VARIETY_LOW_WEIGHTS
   : designB ? LOW_ORB_WEIGHTS : BONUS_REBALANCE_LOW_WEIGHTS
-const high = current ? CURRENT_HIGH_ORB_WEIGHTS : expandedOrbs ? ORB_VARIETY_HIGH_WEIGHTS
+const high = current ? CURRENT_HIGH_ORB_WEIGHTS : richBonus ? RICH_BONUS_HIGH_WEIGHTS : expandedOrbs ? ORB_VARIETY_HIGH_WEIGHTS
   : designB ? HIGH_ORB_WEIGHTS : BONUS_REBALANCE_HIGH_WEIGHTS
 const multipliers = expandedOrbs ? CURRENT_ORB_MULTIPLIERS : BONUS.orbMultiplierWeights.map(([multiplier]) => multiplier)
 const publishedMix = {
@@ -298,6 +307,7 @@ const publishedMix = {
   [ORB_VARIETY_VERSION]: ORB_VARIETY_HIGH_MIX_BPS,
   [EARLY_RESPIN_VERSION]: EARLY_RESPIN_HIGH_MIX_BPS,
   [LATE_RESPIN_VERSION]: LATE_RESPIN_HIGH_MIX_BPS,
+  [RICH_BONUS_VERSION]: RICH_BONUS_HIGH_MIX_BPS,
   [CURRENT_MATH_VERSION]: CURRENT_ORB_HIGH_MIX_BPS,
 }[version]
 const average = (weights: readonly number[]) => mean(multipliers.map((multiplier, i) => [multiplier, weights[i]]))
@@ -311,11 +321,12 @@ const rows = wagers.map(({ fixed, ...wager }) => {
     (!separateMinimum || (row.denominationSen === minimumDenomination) === minimumWager))
     .map(row => sum(Object.values(row.fixed)))
   const fixedSen = 5_000_000 * nOrbs * types.major + 20_000_000 * grandRate
-  const targetMean = ((current ? 0.985 : 0.92) - (designB ? 0.393 + paidScatter + freeScatter +
+  const center = current ? 0.9575 : richBonus ? 0.985 : 0.92
+  const targetMean = (center - (designB ? 0.393 + paidScatter + freeScatter +
     (nOrbs * (5_000 * types.mini + 20_000 * types.minor) + 0.5025 * fixedSen) / totalCredits :
     (Math.min(...fixedReturns) + Math.max(...fixedReturns)) / 2)) / (nOrbs * types.ordinary)
   const mix = Math.round(10_000 * (targetMean - average(low)) / (average(high) - average(low)))
-  const minimumMix = current ? MINIMUM_WAGER_ORB_HIGH_MIX_BPS : LATE_RESPIN_MINIMUM_MIX_BPS
+  const minimumMix = current ? MINIMUM_WAGER_ORB_HIGH_MIX_BPS : richBonus ? RICH_BONUS_MINIMUM_MIX_BPS : LATE_RESPIN_MINIMUM_MIX_BPS
   assert.equal(minimumWager ? minimumMix : publishedMix[totalCredits], mix)
   const weights = orbWeightsForWager({ denominationSen, bet, paytableVersion: version })
   assert.equal(weights.length, multipliers.length)
@@ -331,7 +342,7 @@ const rows = wagers.map(({ fixed, ...wager }) => {
     assert(Math.abs(expected.jackpotPayouts[tier] / bet - components[tier]) < 1e-11)
   }
   const rtp = sum(Object.values(components))
-  assert(current ? rtp < 1 : rtp >= 0.91 && rtp <= 0.93)
+  assert(current || richBonus ? rtp < 1 : rtp >= 0.91 && rtp <= 0.93)
   return { ...wager, components, rtp }
 })
 
@@ -353,7 +364,7 @@ const minimum = rows.reduce((a, b) => a.rtp < b.rtp ? a : b)
 const maximum = rows.reduce((a, b) => a.rtp > b.rtp ? a : b)
 const benchmarkWager = rows.find(row => row.denominationSen === 10 && row.betSize === 1 && row.lines === 8)!
 const holdFrequency = holdEntry + freeBoards * freeHoldEntry
-const { ordinary, mini, minor, major, grand } = benchmarkWager.components
+const { ordinary, mini, minor, major, grand, freeLine } = benchmarkWager.components
 const benchmarkWeights = orbWeightsForWager({ ...benchmarkWager, paytableVersion: version })
 const totalOrbWeight = sum(benchmarkWeights.map(([, weight]) => weight))
 // Below MINI, every payout consists solely of ordinary orbs and comes from an incomplete grid.
@@ -375,20 +386,27 @@ const benchmark = {
   medianPayoutSen: median * benchmarkWager.bet,
   meanOrdinaryPayoutSen: ordinary * benchmarkWager.bet / holdFrequency,
   meanPayoutSen: (ordinary + mini + minor + major + grand) * benchmarkWager.bet / holdFrequency,
+  meanFreePayoutSen: (freeLine + freeScatter + freeBoards *
+    ((ordinary + mini + minor + major) * freeOrbs / nOrbs + grand * freeCounts[15] / grandRate)) * benchmarkWager.bet / paidEntry,
   payoutUnderRm10: sum(hitDistribution.slice(0, Math.ceil(1000 / benchmarkWager.bet))),
+  chance1xOrb: benchmarkWeights[0][1] / totalOrbWeight,
   chanceOrbAtLeast4x: sum(benchmarkWeights.filter(([multiplier]) => multiplier >= 4).map(([, weight]) => weight)) / totalOrbWeight,
   chanceOrbAtLeast8x: sum(benchmarkWeights.filter(([multiplier]) => multiplier >= 8).map(([, weight]) => weight)) / totalOrbWeight,
 }
-if (current) {
-  assert(benchmark.medianPayoutSen >= 2500, 'Expected at least RM25 median Hold & Spin payout at RM0.80')
-  assert(benchmark.chanceOrbAtLeast4x > 0.44, 'Expected larger ordinary Gold Orbs')
-}
+if (richBonus) assert(benchmark.medianPayoutSen >= 2500 && benchmark.chanceOrbAtLeast4x > 0.44)
+if (current) assert(benchmark.chance1xOrb > 0.45, 'Expected 1× to be a common ordinary Gold Orb')
 const sixOrbEndings = endCounts(6, BONUS.respins)
+const sixOrbEndsAtNineOrTen = sum(sixOrbEndings.slice(9, 11))
+if (current) {
+  assert(sixOrbEndings[6] > 0.10 && sixOrbEndsAtNineOrTen < 0.40 && sum(sixOrbEndings.slice(12)) > 0.08,
+    'Expected both short and long Hold & Spin rounds from a six-orb start')
+}
 const tenOrbHitsAgain = sum(endCounts(10, BONUS.respins).slice(11))
 const elevenOrbHitsAgain = sum(endCounts(11, BONUS.respins).slice(12))
 const result = { version, minimum, maximum, holdEntry, freeHoldEntry, freeFeatureWithHold, paidEntry, freeEntry, freeBoards,
   finalOrbs: paidOrbs / holdEntry, freeFinalOrbs: freeOrbs / freeHoldEntry, sixOrbFinal: awardedOrbs(sixOrbEndings),
-  sixOrbReachesTen: sum(sixOrbEndings.slice(10)), sixOrbNoNew: sixOrbEndings[6], tenOrbHitsAgain, elevenOrbHitsAgain,
+  sixOrbReachesTen: sum(sixOrbEndings.slice(10)), sixOrbNoNew: sixOrbEndings[6],
+  sixOrbEndsAtNineOrTen, sixOrbEndings, tenOrbHitsAgain, elevenOrbHitsAgain,
   nOrbs, grandRate, types, benchmark, rows }
 const output = process.argv.slice(2).find(arg => arg !== versionFlag)
 if (output) writeFileSync(output, JSON.stringify(result, null, 2) + '\n')
