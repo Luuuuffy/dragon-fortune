@@ -1,4 +1,4 @@
-import { BET_SIZES, CELLS, CREDIT_PAYTABLE_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_BETS, LEGACY_LINE_COUNTS, LINE_OPTIONS,
+import { BET_SIZES, CELLS, CREDIT_PAYTABLE_VERSION, CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_BETS, LEGACY_LINE_COUNTS, LINE_OPTIONS,
   MAX_INITIAL_BANKROLL, PAYLINES, START_BALANCE, calculateJackpots, legacyJackpots, totalBetSen } from './config'
 import { BONUS } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
@@ -43,6 +43,7 @@ const samePrizes = (value: unknown, prizes: JackpotPrizes): value is JackpotPriz
   object(value) && JACKPOT_TIERS.every(tier => value[tier] === prizes[tier])
 const storedPrizes = (spin: RecordValue) => (spin.jackpotPrizes as JackpotPrizes | undefined) ?? legacyJackpots(spin.bet as number)
 const spinDenomination = (spin: RecordValue) => (spin.betting as Betting | null)?.denominationSen ?? 1
+const wagerPricedProfile = (version: unknown) => integer(version, CREDIT_PAYTABLE_VERSION, CURRENT_MATH_VERSION)
 function pricedFor(orbs: (RecordValue | null)[], spin: RecordValue, version: number) {
   if (version < 5) return true
   const denomination = spinDenomination(spin)
@@ -50,8 +51,7 @@ function pricedFor(orbs: (RecordValue | null)[], spin: RecordValue, version: num
     if (!orb) return true
     if (specialTier(orb.tier)) return orb.payoutSen === storedPrizes(spin)[orb.tier]
     if (orb.payoutSen !== (orb.value as number) * denomination) return false
-    const wagerPriced = spin.paytableVersion === CREDIT_PAYTABLE_VERSION || spin.paytableVersion === DESIGN_B_VERSION
-    return !wagerPriced || (integer(orb.multiplier, 1) &&
+    return !wagerPricedProfile(spin.paytableVersion) || (integer(orb.multiplier, 1) &&
       orb.payoutSen === (spin.bet as number) * orb.multiplier && Boolean(orb.displayMyr) === (denomination >= 100))
   })
 }
@@ -71,7 +71,7 @@ const spin = (value: unknown, legacy: boolean): value is RecordValue =>
   (value.jackpotPrizes === undefined || (betting(value.betting) &&
     samePrizes(value.jackpotPrizes, calculateJackpots(value.betting.denominationSen)))) &&
   (value.paytableVersion === undefined || value.paytableVersion === 2 ||
-    ((value.paytableVersion === CREDIT_PAYTABLE_VERSION || value.paytableVersion === DESIGN_B_VERSION) && betting(value.betting))) &&
+    (wagerPricedProfile(value.paytableVersion) && betting(value.betting))) &&
   board(value.board) && (value.scenario === undefined ||
     (typeof value.scenario === 'string' && Object.hasOwn(SCENARIOS, value.scenario)))
 const result = (value: unknown): value is RecordValue => {
@@ -109,14 +109,16 @@ function validFeature(value: unknown, version: number): value is FreeSpins {
   if (value.paidHold !== null && !heldBoard(value.paidHold, value.root, version)) return false
   const next = value.nextHold
   return next === null || (object(next) && spin(next.spin, false) &&
-    sameDesignBProfile(value.root, next.spin) &&
+    sameMathProfile(value.root, next.spin) &&
     next.spin.id === `${value.root.id}:free:${value.awarded - value.remaining}` &&
     sameBetting(next.spin.betting, value.root.betting) && heldBoard(next.orbs, next.spin, version))
 }
 
 // Legacy features could have an unversioned root and a version 2 free spin.
-const sameDesignBProfile = (root: RecordValue, child: RecordValue) =>
-  (root.paytableVersion === DESIGN_B_VERSION) === (child.paytableVersion === DESIGN_B_VERSION)
+const sameMathProfile = (root: RecordValue, child: RecordValue) => {
+  const profile = (spin: RecordValue) => integer(spin.paytableVersion, DESIGN_B_VERSION) ? spin.paytableVersion : 0
+  return profile(root) === profile(child)
+}
 
 function validRound(value: unknown, session: RecordValue, version: number) {
   if (!object(value)) return false
@@ -152,7 +154,7 @@ function validRound(value: unknown, session: RecordValue, version: number) {
     (!object(session.last) || candidate.id !== session.last.spinId)
   if (phase === 'SPINNING') {
     if (!pendingSpin(value.spin)) return false
-    if (feature && (value.spin.id !== currentFreeId || !sameDesignBProfile(feature.root, value.spin))) return false
+    if (feature && (value.spin.id !== currentFreeId || !sameMathProfile(feature.root, value.spin))) return false
     const spinBoard = value.spin.board as SymbolId[]
     const trigger = spinBoard.filter(symbol => symbol === 'orb').length >= BONUS.triggerCount
     if (version < 3 && !trigger) return orbs === null
@@ -167,7 +169,7 @@ function validRound(value: unknown, session: RecordValue, version: number) {
   if (!object(bonus) || !pendingSpin(bonus.spin) || !slots(bonus.orbs, version) || !pricedFor(bonus.orbs, bonus.spin, version) ||
       !integer(bonus.remaining, 1, BONUS.respins) || !integer(bonus.turn, 0, CELLS * BONUS.respins)) return false
   if (feature && ((bonus.spin.id !== currentFreeId && bonus.spin.id !== feature.root.id) ||
-      !sameDesignBProfile(feature.root, bonus.spin))) return false
+      !sameMathProfile(feature.root, bonus.spin))) return false
   const locked = bonus.orbs
   const spinBoard = bonus.spin.board as string[]
   if (spinBoard.filter(symbol => symbol === 'orb').length < BONUS.triggerCount ||

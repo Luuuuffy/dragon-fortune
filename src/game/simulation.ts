@@ -1,34 +1,35 @@
 import { BONUS, holdBoardMoments } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
-import { baseOrbChance, evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, legacyLinePayout,
+import { boardOrbChance, evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, legacyLinePayout,
   orbTypeProbabilities, respin, seededRandom, settleBonus, startingOrbs, triggersBonus } from './engine'
 import type { Slots } from './engine'
-import { CELLS, DESIGN_B_VERSION, calculateJackpots } from './config'
+import { CELLS, CURRENT_MATH_VERSION, calculateJackpots } from './config'
 import type { PaytableVersion, SymbolId } from './config'
 import { orbWeightsForWager, priceWagerOrb } from './orbPrizes'
 
 export function expectedHoldPayout(denominationSen: number, bet: number, legacy = false,
-  grandAddsToOrbs: boolean = BONUS.grandAddsToOrbs) {
-  const paidEntry = lanternCountOdds(false).slice(3).reduce((sum, chance) => sum + chance, 0)
-  const retrigger = lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0)
-  const boardsPerPaidSpin = 1 + paidEntry * LANTERN.initialSpins / (1 - retrigger * LANTERN.extraSpins)
-  const { full, orbs } = holdBoardMoments(CELLS, baseOrbChance)
-  const paidOrbs = (orbs - (grandAddsToOrbs ? 0 : CELLS * full)) * boardsPerPaidSpin
+  grandAddsToOrbs: boolean = BONUS.grandAddsToOrbs, paytableVersion: PaytableVersion = legacy ? 2 : CURRENT_MATH_VERSION) {
+  const paidEntry = lanternCountOdds(false, paytableVersion).slice(3).reduce((sum, chance) => sum + chance, 0)
+  const retrigger = lanternCountOdds(true, paytableVersion).slice(3).reduce((sum, chance) => sum + chance, 0)
+  const freeBoards = paidEntry * LANTERN.initialSpins / (1 - retrigger * LANTERN.extraSpins)
+  const paid = holdBoardMoments(CELLS, boardOrbChance(false, paytableVersion), paytableVersion)
+  const free = holdBoardMoments(CELLS, boardOrbChance(true, paytableVersion), paytableVersion)
+  const grandAwards = paid.full + freeBoards * free.full
+  const paidOrbs = paid.orbs + freeBoards * free.orbs - (grandAddsToOrbs ? 0 : CELLS * grandAwards)
   const prizes = calculateJackpots(denominationSen)
-  const paytableVersion: PaytableVersion = legacy ? 2 : DESIGN_B_VERSION
   const wager = { denominationSen, bet, paytableVersion, legacyBetSize: legacy ? 1 : undefined }
   const weights = orbWeightsForWager(wager)
   const multiplierWeight = weights.reduce((sum, [, weight]) => sum + weight, 0)
   const ordinaryMean = weights.reduce((sum, [multiplier, weight]) =>
     sum + priceWagerOrb(wager, multiplier).payoutSen * weight / multiplierWeight, 0)
   let ordinaryOrbs = 0
-  const jackpotPayouts = { mini: 0, minor: 0, major: 0, grand: full * boardsPerPaidSpin * prizes.grand }
+  const jackpotPayouts = { mini: 0, minor: 0, major: 0, grand: grandAwards * prizes.grand }
   for (const [type, chance] of orbTypeProbabilities(paytableVersion)) {
     if (type === 'ordinary') ordinaryOrbs = paidOrbs * chance * ordinaryMean
     else jackpotPayouts[type] = paidOrbs * chance * prizes[type]
   }
   return { ordinaryOrbs, jackpots: Object.values(jackpotPayouts).reduce((sum, value) => sum + value, 0), jackpotPayouts,
-    grandAwards: full * boardsPerPaidSpin }
+    grandAwards }
 }
 
 export function simulate({ spins, denominationSen, bet, lines, seed, legacy = false }: {
@@ -36,7 +37,7 @@ export function simulate({ spins, denominationSen, bet, lines, seed, legacy = fa
 }) {
   const rng = seededRandom(seed)
   const jackpotPrizes = calculateJackpots(denominationSen)
-  const version: PaytableVersion = legacy ? 2 : DESIGN_B_VERSION
+  const version: PaytableVersion = legacy ? 2 : CURRENT_MATH_VERSION
   const wager = { denominationSen, bet, jackpotPrizes, paytableVersion: version, legacyBetSize: legacy ? 1 : undefined }
   const jackpotCounts = { grand: 0, major: 0, minor: 0, mini: 0 }
   const jackpotHits = { grand: 0, major: 0, minor: 0, mini: 0 }
@@ -63,6 +64,7 @@ export function simulate({ spins, denominationSen, bet, lines, seed, legacy = fa
   let freeHoldTriggers = 0
   let freeWon = 0
   let freeZeroPayouts = 0
+  let freeFeaturesWithHold = 0
 
   const lineWin = (board: SymbolId[]) => {
     const raw = evaluateLines(board, legacy ? bet : bet / lines, lines, version).amount
@@ -113,6 +115,7 @@ export function simulate({ spins, denominationSen, bet, lines, seed, legacy = fa
       lanternTriggers++
       let remaining: number = LANTERN.initialSpins
       let featureWin = 0
+      let triggeredHold = false
       while (remaining > 0) {
         remaining--
         freePlayed++
@@ -131,11 +134,13 @@ export function simulate({ spins, denominationSen, bet, lines, seed, legacy = fa
           remaining += LANTERN.extraSpins
         }
         if (triggersBonus(freeBoard)) {
+          triggeredHold = true
           freeHoldTriggers++
           featureWin += holdWin(freeOrbs, spin)
         }
       }
       freeWon += featureWin
+      if (triggeredHold) freeFeaturesWithHold++
       if (!featureWin) freeZeroPayouts++
       amount += featureWin
     }
@@ -148,5 +153,6 @@ export function simulate({ spins, denominationSen, bet, lines, seed, legacy = fa
   }
   return { spins, won, bonusWon, components, triggers, hits, lineHits, jackpotCounts, jackpotHits, holdTriggers,
     holdFinalOrbs, sixOrbStarts, sixOrbFinalOrbs, sixOrbStartsReachingEight, lanternTriggers,
-    freeRetriggers, freePlayed, freeGoldOrbs, freeLineHits, freeHoldTriggers, freeWon, freeZeroPayouts, paidLanternCounts, freeLanternCounts }
+    freeRetriggers, freePlayed, freeGoldOrbs, freeLineHits, freeHoldTriggers, freeFeaturesWithHold,
+    freeWon, freeZeroPayouts, paidLanternCounts, freeLanternCounts }
 }

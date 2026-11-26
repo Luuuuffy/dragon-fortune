@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CELLS, calculateJackpots, cellAt, legacyJackpots, parseBankroll, START_BALANCE, totalBetSen } from './config'
+import { CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, calculateJackpots, cellAt, legacyJackpots, parseBankroll, START_BALANCE, totalBetSen } from './config'
 import { calculateOrbPrize } from './orbPrizes'
 import type { Scenario } from './engine'
 import { completeHoldCollection, dismissResult, lastWinSen, newSession, openBonus, resetGame, resetStats, revealRespin, revealSpin,
@@ -53,7 +53,7 @@ describe('round transitions and persistence', () => {
     const active = begin('none')
     if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
     const { paytableVersion, ...previous } = active.round.spin
-    expect(paytableVersion).toBe(4)
+    expect(paytableVersion).toBe(CURRENT_MATH_VERSION)
     const board = previous.board.map((symbol, position) => position % 3 === 1 ? 'J' as const : symbol)
     const original = reload({ ...active, round: { ...active.round, spin: { ...previous, board } } })
     expect(revealSpin(original, 'test').last?.line).toBe(35)
@@ -64,6 +64,21 @@ describe('round transitions and persistence', () => {
     const updated = reload({ ...active, round: { ...active.round, spin: { ...active.round.spin, board } } })
     expect(revealSpin(updated, 'test').last?.line).toBe(55)
   })
+
+  it.each([[DESIGN_B_VERSION, 0], [CURRENT_MATH_VERSION, 1]] as const)(
+    'keeps profile %i respin odds after reloading a paid Hold & Spin', (paytableVersion, landed) => {
+      const active = begin('six')
+      if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
+      const spin = { ...active.round.spin, scenario: undefined, paytableVersion }
+      const pending = reload({ ...active, round: { ...active.round, spin } })
+      const ready = reload(openBonus(revealSpin(pending, 'test'), 'test'))
+      const draws = [0.08, 0.99, 0.99]
+      const respinning = reload(startRespin(ready, () => draws.shift() ?? 0.99))
+      if (respinning.round.phase !== 'BONUS_RESPIN') throw new Error('Expected a pending respin')
+      expect(respinning.round.bonus.next?.orbs.filter(Boolean)).toHaveLength(6 + landed)
+      expect(respinning.round.bonus.next?.remaining).toBe(landed ? 3 : 2)
+    },
+  )
 
   it('persists the two-Tiger credit award and pays it once at a higher bet size', () => {
     const betting = { denominationSen: 100, betSize: 3, lines: 8 }

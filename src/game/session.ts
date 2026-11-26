@@ -1,4 +1,4 @@
-import { BET_SIZES, CREDIT_PAYTABLE_VERSION, DEFAULT_BETTING, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS, LINE_OPTIONS, MAX_INITIAL_BANKROLL,
+import { BET_SIZES, CREDIT_PAYTABLE_VERSION, CURRENT_MATH_VERSION, DEFAULT_BETTING, DENOMINATIONS_SEN, JACKPOT_TIERS, LINE_OPTIONS, MAX_INITIAL_BANKROLL,
   BOARD_SYMBOLS, betPerLineSen, calculateJackpots, legacyJackpots, totalBetSen } from './config'
 import { BONUS } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
@@ -122,7 +122,7 @@ export function startSpin(session: Session, rng: Random, id: string, scenario?: 
   if (session.round.phase !== 'IDLE' || session.initialBankroll === null || balance < bet ||
       session.last?.spinId === id || scenario === 'insufficient') return session
   const board = generateBoard(rng, scenario)
-  const spin: Spin = { id, bet, lines: betting.lines, betting: { ...betting }, paytableVersion: DESIGN_B_VERSION,
+  const spin: Spin = { id, bet, lines: betting.lines, betting: { ...betting }, paytableVersion: CURRENT_MATH_VERSION,
     jackpotPrizes: calculateJackpots(betting.denominationSen), board, scenario }
   const orbs = startingOrbs(board, rng, spinOrbWager(spin), scenario)
   return {

@@ -34,7 +34,13 @@ export const WILD_STACK_WEIGHTS = {
   free: [80, 8, 6, 6],
 } as const
 
+export const CURRENT_WILD_STACK_WEIGHTS = {
+  paid: [87, 8, 3, 2],
+  free: [80, 12, 5, 3],
+} as const
+
 export const DESIGN_B_ORB_TYPES = { ordinary: 99.86799, mini: 0.12, minor: 0.012, major: 0.00001 } as const
+export const CURRENT_ORB_TYPES = { ordinary: 99.88999, mini: 0.10, minor: 0.01, major: 0.00001 } as const
 
 // Design B's published schedule. The high distribution is blended in these basis points.
 export const ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
@@ -45,6 +51,18 @@ export const ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
 }
 export const LOW_ORB_WEIGHTS = [90, 8, 1.5, 0.35, 0.10, 0.04, 0.008, 0.0015, 0.0005] as const
 export const HIGH_ORB_WEIGHTS = [40.7, 25, 16, 14, 3.7, 0.45, 0.13, 0.018, 0.002] as const
+export const CURRENT_LOW_ORB_WEIGHTS = [65.7, 30, 3.8, 0.4, 0.07, 0.02, 0.008, 0.0015, 0.0005] as const
+export const CURRENT_HIGH_ORB_WEIGHTS = [21, 35, 30, 12, 1.7, 0.24, 0.055, 0.004, 0.001] as const
+// Blend the ordinary orb schedules by credits to center each group's theoretical RTP at 92%.
+export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+  8: 1022, 16: 4661, 18: 4966, 24: 5875, 36: 6584, 38: 6783, 40: 6845,
+  54: 7123, 58: 7195, 76: 7549, 80: 7573, 88: 7520, 90: 7554, 114: 7804,
+  116: 7697, 174: 7864, 176: 7851, 180: 7878, 190: 8009, 264: 7962, 290: 7998,
+  380: 8162, 440: 8050, 580: 8098, 880: 8116,
+}
+
+export const FREE_ORB_CHANCE = 0.185
+export const CURRENT_RESPIN_RATES = [[8, 0.091], [10, 0.043], [12, 0.01], [CELLS, 0.00105]] as const
 
 // Used only for respins and Free Spins continuing under earlier saved rules.
 export const LEGACY_ORB_UNITS = 8

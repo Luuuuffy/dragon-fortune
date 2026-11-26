@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CELLS, REELS, ROWS, START_BALANCE, calculateJackpots, cellAt } from './config'
+import { CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, REELS, ROWS, START_BALANCE, calculateJackpots, cellAt } from './config'
 import type { SymbolId } from './config'
 import { evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, lanternReels, seededRandom, startingOrbs,
   triggersBonus } from './engine'
 import type { Scenario } from './engine'
 import { LANTERN } from './lanternConfig'
+import { CURRENT_WILD_STACK_WEIGHTS, REEL_SYMBOL_WEIGHTS } from './probabilityConfig'
 import { completeHoldCollection, dismissResult, freeSpinsWin, lastWinSen, newSession, openBonus, resetGame, revealRespin,
   revealSpin, selectBetting, setBankroll, startRespin, startSpin } from './session'
 import type { Session } from './session'
@@ -86,6 +87,10 @@ describe('Red Lantern scatter', () => {
     const modeledRetrigger = lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0)
     expect(Math.abs(sim.lanternTriggers / sim.spins - modeled)).toBeLessThan(0.002)
     expect(Math.abs(sim.freeRetriggers / sim.freePlayed - modeledRetrigger)).toBeLessThan(0.012)
+    expect(sim.freeHoldTriggers / sim.freePlayed).toBeGreaterThan(0.035)
+    expect(sim.freeHoldTriggers / sim.freePlayed).toBeLessThan(0.055)
+    expect(sim.freeFeaturesWithHold / sim.lanternTriggers).toBeGreaterThan(0.20)
+    expect(sim.freeLineHits / sim.freePlayed).toBeGreaterThan(sim.lineHits / sim.spins)
     expect(sim.freePlayed).toBe(sim.lanternTriggers * LANTERN.initialSpins + sim.freeRetriggers * LANTERN.extraSpins)
     expect(sim.freeWon).toBeGreaterThan(0)
   })
@@ -105,12 +110,13 @@ describe('Red Lantern scatter', () => {
     expect(tuned.odds.reduce((sum, chance) => sum + chance, 0)).toBeCloseTo(1)
   })
 
-  it('lands more Gold Orbs and wins more lines in Free Spins while preserving feature triggers', () => {
-    const drawOriginal = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights).drawBoard
+  it('adds Free Spin orbs without changing natural triggers or moving Lanterns', () => {
+    const drawOriginal = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights,
+      CURRENT_WILD_STACK_WEIGHTS.free, REEL_SYMBOL_WEIGHTS.free, 0.185).drawBoard
     const rng = seededRandom(2526)
     let extraOrbs = 0
-    let originalLineHits = 0
-    let freeLineHits = 0
+    let naturalTriggers = 0
+    let previousTriggers = 0
 
     for (let spin = 0; spin < 10_000; spin++) {
       const seed = rng() * 2 ** 32
@@ -122,16 +128,16 @@ describe('Red Lantern scatter', () => {
       expect(triggersBonus(free)).toBe(triggersBonus(original))
       expect(evaluateScatter(free, wager).count).toBe(evaluateScatter(original, wager).count)
       extraOrbs += added
-      originalLineHits += Number(evaluateLines(original, 10, 8).amount > 0)
-      freeLineHits += Number(evaluateLines(free, 10, 8).amount > 0)
+      naturalTriggers += Number(triggersBonus(free))
+      previousTriggers += Number(triggersBonus(generateBoard(seededRandom(seed), undefined, true, DESIGN_B_VERSION)))
     }
 
     expect(extraOrbs).toBeGreaterThan(2_000)
     expect(extraOrbs).toBeLessThan(4_000)
-    expect(freeLineHits).toBeGreaterThan(originalLineHits)
+    expect(naturalTriggers).toBeGreaterThan(previousTriggers * 1.8)
   })
 
-  it.each([{ free: false, minimumFullReelRate: 0.05 }, { free: true, minimumFullReelRate: 0.10 }])(
+  it.each([{ free: false, minimumFullReelRate: 0.03 }, { free: true, minimumFullReelRate: 0.045 }])(
     'places Lanterns on separate reels and lands adjacent Panda Wild stacks (Free Spins: $free)',
     ({ free, minimumFullReelRate }) => {
       const rng = seededRandom(2026)
@@ -165,7 +171,8 @@ describe('Red Lantern scatter', () => {
 })
 
 describe('automatic Free Spins', () => {
-  it.each([[3, 3_000], [4, 6_000]] as const)('locks profile %i across the triggering wager and free line payout', (version, payout) => {
+  it.each([[3, 3_000], [DESIGN_B_VERSION, 6_000], [CURRENT_MATH_VERSION, 6_000]] as const)(
+    'locks profile %i across the triggering wager and free line payout', (version, payout) => {
     vi.useFakeTimers()
     const start = selectBetting(funded(), { denominationSen: 10, betSize: 3 })
     const active = startSpin(start, noHits, rootId, 'lantern3')

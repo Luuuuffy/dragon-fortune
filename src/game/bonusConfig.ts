@@ -1,16 +1,21 @@
-import { CELLS } from './config'
-import { BONUS } from './probabilityConfig'
+import { CELLS, CURRENT_MATH_VERSION } from './config'
+import type { PaytableVersion } from './config'
+import { BONUS, CURRENT_RESPIN_RATES } from './probabilityConfig'
 export { BONUS } from './probabilityConfig'
 
-const { respinLandingRates } = BONUS
-if (respinLandingRates.at(-1)?.[0] !== CELLS || respinLandingRates.some(([limit, chance], index) =>
-  !Number.isInteger(limit) || limit <= (respinLandingRates[index - 1]?.[0] ?? BONUS.triggerCount) ||
-  !Number.isFinite(chance) || chance < 0 || chance > 1)) {
-  throw new RangeError('Cover all Hold & Spin board sizes with increasing bounds and valid landing probabilities.')
+for (const rates of [BONUS.respinLandingRates, CURRENT_RESPIN_RATES]) {
+  if (rates.at(-1)?.[0] !== CELLS || rates.some(([limit, chance], index) =>
+    !Number.isInteger(limit) || limit <= (rates[index - 1]?.[0] ?? BONUS.triggerCount) ||
+    !Number.isFinite(chance) || chance < 0 || chance > 1)) {
+    throw new RangeError('Cover all Hold & Spin board sizes with increasing bounds and valid landing probabilities.')
+  }
 }
 
-export const respinLandingChance = (held: number) =>
-  respinLandingRates.find(([limit]) => held < limit)?.[1] ?? 0
+export const respinRates = (version: PaytableVersion = CURRENT_MATH_VERSION) =>
+  version === CURRENT_MATH_VERSION ? CURRENT_RESPIN_RATES : BONUS.respinLandingRates
+
+export const respinLandingChance = (held: number, version?: PaytableVersion) =>
+  respinRates(version).find(([limit]) => held < limit)?.[1] ?? 0
 
 export function binomial(trials: number, chance: number) {
   let combinations = 1
@@ -26,13 +31,13 @@ export function bonusEntryChance(cells: number, orbChance: number) {
 }
 
 // Unconditional expectations per reel board. Boards below the trigger contribute nothing.
-export function holdBoardMoments(cells: number, baseOrbChance: number) {
+export function holdBoardMoments(cells: number, baseOrbChance: number, version?: PaytableVersion) {
   const endings = Array.from({ length: cells + 1 }, (_, held) =>
     Array.from({ length: BONUS.respins + 1 }, () => ({
       full: Number(held === cells), orbs: held, eightOrMore: Number(held >= 8),
     })))
   for (let held = cells - 1; held >= BONUS.triggerCount; held--) {
-    const hits = binomial(cells - held, respinLandingChance(held))
+    const hits = binomial(cells - held, respinLandingChance(held, version))
     const additional = hits.slice(1).reduce((sum, probability, index) => {
       const next = endings[held + index + 1][BONUS.respins]
       return {

@@ -29,7 +29,7 @@ The Continue/Spin regression passed with mouse, keyboard, and touch input in two
 
 The reproducible checker enumerates paid and free matching prefixes with the actual paylines, paying-symbol pools, Wild placement, and conditional Lantern placement. It accounts for the optional free extra orb. It independently sums Lantern odds over the original orb masks and solves a memoized terminal distribution for Hold & Spin. The three special orb tiers are valued per awarded orb and GRAND is valued separately per full board. Free Spins contribute to the payout numerator with the expected number of free boards per paid wager. The checker compares each of the four jackpot components and the ordinary-orb component with the production simulator's Hold & Spin model. It also recalculates every basis-point schedule entry from the approved formula and checks the published RTP rows.
 
-Run `npm run verify:rtp` to reproduce the verification. Pass an output path after `--` to save the full component data as JSON. The complete theoretical matrix is included at the end of this document. [Independent checker](scripts/verifyRtp.ts)
+Run `npm run verify:rtp -- --design-b` to reproduce the verification for this math profile. Add an output path to save the full component data as JSON. The complete theoretical matrix is included at the end of this document. [Independent checker](scripts/verifyRtp.ts)
 
 ### Feature rates and jackpot verification
 

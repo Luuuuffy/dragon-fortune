@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import {
-  BET_SIZES, DENOMINATIONS_SEN, LINE_OPTIONS, PAYLINES, LINE_CREDITS, calculateJackpots, totalBetSen, wagerCredits,
+  BET_SIZES, CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, LINE_OPTIONS, PAYLINES, LINE_CREDITS,
+  calculateJackpots, totalBetSen, wagerCredits,
 } from '../src/game/config'
 import { BONUS } from '../src/game/bonusConfig'
 import { LANTERN } from '../src/game/lanternConfig'
 import { REEL_SYMBOL_WEIGHTS, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS, NON_ORB_WEIGHT, DESIGN_B_ORB_TYPES,
-  LOW_ORB_WEIGHTS, HIGH_ORB_WEIGHTS, ORB_HIGH_MIX_BPS } from '../src/game/probabilityConfig'
+  LOW_ORB_WEIGHTS, HIGH_ORB_WEIGHTS, ORB_HIGH_MIX_BPS, CURRENT_WILD_STACK_WEIGHTS, CURRENT_ORB_TYPES,
+  CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_HIGH_MIX_BPS, CURRENT_RESPIN_RATES,
+  FREE_ORB_CHANCE } from '../src/game/probabilityConfig'
 import { orbWeightsForWager } from '../src/game/orbPrizes'
 import { expectedHoldPayout } from '../src/game/simulation'
 
@@ -22,6 +25,11 @@ const key = (open: number, reels: number, lit: number, regular: number, required
   open | (reels << 4) | (lit << 7) | (regular << 10) | (required << 14)
 const add = (out: Map<number, number>, k: number, value: number) => out.set(k, (out.get(k) ?? 0) + value)
 const baseOrbChance = BONUS.baseOrbWeight / (NON_ORB_WEIGHT + BONUS.baseOrbWeight)
+const designB = process.argv.includes('--design-b')
+const version = designB ? DESIGN_B_VERSION : CURRENT_MATH_VERSION
+const boardChance = (isFree: boolean) => isFree && !designB ? FREE_ORB_CHANCE : baseOrbChance
+const respinRates = designB ? BONUS.respinLandingRates : CURRENT_RESPIN_RATES
+const wildWeights = designB ? WILD_STACK_WEIGHTS : CURRENT_WILD_STACK_WEIGHTS
 const reelCache = new Map<string, [number, number][]>()
 const lanternCache = new Map<string, number>()
 
@@ -45,15 +53,16 @@ function lanternFactor(open: number, reels: number, lit: number, isFree: boolean
   return value
 }
 function reelStates(first: boolean, row: number, symbolChance: number, isFree: boolean) {
+  const orbChance = boardChance(isFree)
   const id = [first, row, symbolChance, isFree].join('/')
   const known = reelCache.get(id)
   if (known) return known
   const result = new Map<number, number>()
-  const weights = first ? [1] : isFree ? WILD_STACK_WEIGHTS.free : WILD_STACK_WEIGHTS.paid
+  const weights = first ? [1] : isFree ? wildWeights.free : wildWeights.paid
   const weightsTotal = sum(weights)
   for (let openMask = 0; openMask < 8; openMask++) {
     const open = count(openMask)
-    const maskChance = (1 - baseOrbChance) ** open * baseOrbChance ** (3 - open)
+    const maskChance = (1 - orbChance) ** open * orbChance ** (3 - open)
     for (let lantern = -1; lantern < 3; lantern++) {
       if (lantern >= 0 && !(openMask & (1 << lantern))) continue
       const lit = Number(lantern >= 0)
@@ -150,6 +159,8 @@ const paths = LINE_OPTIONS.map(lines => {
 // is for one subset of reels, so multiply by the number of equivalent subsets.
 function scatterOdds(isFree: boolean) {
   const odds = Array<number>(6).fill(0)
+  const orbChance = boardChance(isFree)
+  let withHold = 0
   for (let mask = 0; mask < 1 << 15; mask++) {
     let open = 0
     let reels = 0
@@ -158,13 +169,15 @@ function scatterOdds(isFree: boolean) {
       if (positions) reels++
       open += count(positions)
     }
-    const mass = (1 - baseOrbChance) ** open * baseOrbChance ** (15 - open)
+    const mass = (1 - orbChance) ** open * orbChance ** (15 - open)
     for (let lit = 0; lit <= reels; lit++) {
-      odds[lit] += mass * lanternFactor(open, reels, lit, isFree) * choose(reels, lit)
+      const probability = mass * lanternFactor(open, reels, lit, isFree) * choose(reels, lit)
+      odds[lit] += probability
+      if (lit >= 3 && 15 - open >= BONUS.triggerCount) withHold += probability
     }
   }
   assert(Math.abs(sum(odds) - 1) < 1e-10)
-  return odds
+  return { odds, withHold }
 }
 
 // Memoize the terminal distribution after hits reset the counter and misses consume one turn.
@@ -174,7 +187,7 @@ function endCounts(held: number, remaining: number): number[] {
   const cached = endings.get(id)
   if (cached) return cached
   if (!remaining || held === 15) return Array.from({ length: 16 }, (_, i) => Number(i === held))
-  const chance = BONUS.respinLandingRates.find(([limit]) => held < limit)![1]
+  const chance = respinRates.find(([limit]) => held < limit)![1]
   const empty = 15 - held
   const result = Array<number>(16).fill(0)
   for (let added = 0; added <= empty; added++) {
@@ -186,94 +199,119 @@ function endCounts(held: number, remaining: number): number[] {
   return result
 }
 
-const paidOdds = scatterOdds(false)
-const freeOdds = scatterOdds(true)
+const { odds: paidOdds } = scatterOdds(false)
+const { odds: freeOdds, withHold: freeScatterWithHold } = scatterOdds(true)
 const paidEntry = sum(paidOdds.slice(3))
 const freeEntry = sum(freeOdds.slice(3))
 const freeBoards = paidEntry * LANTERN.initialSpins / (1 - freeEntry * LANTERN.extraSpins)
 const scatter = (odds: number[]) => sum(odds.map((p, i) => p * (LANTERN.payouts[i as 3 | 4 | 5] ?? 0)))
 const paidScatter = scatter(paidOdds)
 const freeScatter = scatter(freeOdds) * freeBoards
-const boardCounts = Array<number>(16).fill(0)
-for (let held = BONUS.triggerCount; held <= 15; held++) {
-  const initial = choose(15, held) * baseOrbChance ** held * (1 - baseOrbChance) ** (15 - held)
-  endCounts(held, BONUS.respins).forEach((p, i) => { boardCounts[i] += p * initial })
+function boardCounts(orbChance: number) {
+  const counts = Array<number>(16).fill(0)
+  for (let held = BONUS.triggerCount; held <= 15; held++) {
+    const initial = choose(15, held) * orbChance ** held * (1 - orbChance) ** (15 - held)
+    endCounts(held, BONUS.respins).forEach((p, i) => { counts[i] += p * initial })
+  }
+  return counts
 }
 assert(BONUS.grandAddsToOrbs, 'Grand should add to orb awards')
-const holdEntry = sum(boardCounts)
-const nOrbs = sum(boardCounts.map((p, i) => p * i)) * (1 + freeBoards)
-const grandRate = boardCounts[15] * (1 + freeBoards)
-const totalTypeWeight = sum(Object.values(DESIGN_B_ORB_TYPES))
+const paidCounts = boardCounts(boardChance(false))
+const freeCounts = boardCounts(boardChance(true))
+const holdEntry = sum(paidCounts)
+const freeHoldEntry = sum(freeCounts)
+const awardedOrbs = (counts: number[]) => sum(counts.map((p, i) => p * i))
+const paidOrbs = awardedOrbs(paidCounts)
+const freeOrbs = awardedOrbs(freeCounts)
+const nOrbs = paidOrbs + freeBoards * freeOrbs
+const grandRate = paidCounts[15] + freeBoards * freeCounts[15]
+// A free spin with no Hold trigger either ends that branch or awards three more spins.
+let noHoldBranch = 1
+for (let step = 0; step < 40; step++) {
+  noHoldBranch = 1 - freeHoldEntry - freeEntry + freeScatterWithHold +
+    (freeEntry - freeScatterWithHold) * noHoldBranch ** LANTERN.extraSpins
+}
+const freeFeatureWithHold = 1 - noHoldBranch ** LANTERN.initialSpins
+const typeWeights = designB ? DESIGN_B_ORB_TYPES : CURRENT_ORB_TYPES
+const totalTypeWeight = sum(Object.values(typeWeights))
 const types = {
-  ordinary: DESIGN_B_ORB_TYPES.ordinary / totalTypeWeight,
-  mini: DESIGN_B_ORB_TYPES.mini / totalTypeWeight,
-  minor: DESIGN_B_ORB_TYPES.minor / totalTypeWeight,
-  major: DESIGN_B_ORB_TYPES.major / totalTypeWeight,
+  ordinary: typeWeights.ordinary / totalTypeWeight,
+  mini: typeWeights.mini / totalTypeWeight,
+  minor: typeWeights.minor / totalTypeWeight,
+  major: typeWeights.major / totalTypeWeight,
 }
 const mean = (distribution: readonly (readonly [number, number])[]) =>
   sum(distribution.map(([pay, weight]) => pay * weight)) / sum(distribution.map(([, weight]) => weight))
 
-const rows = DENOMINATIONS_SEN.flatMap(denominationSen => BET_SIZES.flatMap(betSize => paths.map(path => {
+const wagers = DENOMINATIONS_SEN.flatMap(denominationSen => BET_SIZES.flatMap(betSize => paths.map(path => {
   const betting = { denominationSen, betSize, lines: path.lines }
   const bet = totalBetSen(betting)
   const totalCredits = wagerCredits(betting)
   const prizes = calculateJackpots(denominationSen)
-  const fixedSen = 5_000_000 * nOrbs * types.major + 20_000_000 * grandRate
-  const targetMean = (0.92 - 0.393 - paidScatter - freeScatter -
-    (nOrbs * (5_000 * types.mini + 20_000 * types.minor) + 0.5025 * fixedSen) / totalCredits) /
-    (nOrbs * types.ordinary)
-  const approvedMix = Math.round(10_000 * (targetMean - 1.147) / (2.634 - 1.147))
-  assert.equal(ORB_HIGH_MIX_BPS[totalCredits], approvedMix)
-  const weights = orbWeightsForWager({ denominationSen, bet })
-  assert.equal(weights.length, 9)
-  weights.forEach(([, weight], index) => {
-    assert(weight > 0)
-    assert(Math.abs(weight - (LOW_ORB_WEIGHTS[index] * (1 - approvedMix / 10_000) +
-      HIGH_ORB_WEIGHTS[index] * approvedMix / 10_000)) < 1e-10)
-  })
-  const components = {
+  const fixed = {
     paidLine: path.paidCredit / path.lines,
     paidScatter,
     freeLine: path.freeCredit * freeBoards / path.lines,
     freeScatter,
-    ordinary: nOrbs * types.ordinary * mean(weights),
     mini: nOrbs * types.mini * prizes.mini / bet,
     minor: nOrbs * types.minor * prizes.minor / bet,
     major: nOrbs * types.major * prizes.major / bet,
     grand: grandRate * prizes.grand / bet,
   }
-  const expected = expectedHoldPayout(denominationSen, bet)
+  return { ...betting, bet, totalCredits, fixed }
+})))
+
+const low = designB ? LOW_ORB_WEIGHTS : CURRENT_LOW_ORB_WEIGHTS
+const high = designB ? HIGH_ORB_WEIGHTS : CURRENT_HIGH_ORB_WEIGHTS
+const average = (weights: readonly number[]) => mean(BONUS.orbMultiplierWeights.map(([multiplier], i) => [multiplier, weights[i]]))
+const rows = wagers.map(({ fixed, ...wager }) => {
+  const { denominationSen, bet, totalCredits } = wager
+  const fixedReturns = wagers.filter(row => row.totalCredits === totalCredits).map(row => sum(Object.values(row.fixed)))
+  const fixedSen = 5_000_000 * nOrbs * types.major + 20_000_000 * grandRate
+  const targetMean = (0.92 - (designB ? 0.393 + paidScatter + freeScatter +
+    (nOrbs * (5_000 * types.mini + 20_000 * types.minor) + 0.5025 * fixedSen) / totalCredits :
+    (Math.min(...fixedReturns) + Math.max(...fixedReturns)) / 2)) / (nOrbs * types.ordinary)
+  const mix = Math.round(10_000 * (targetMean - average(low)) / (average(high) - average(low)))
+  assert.equal((designB ? ORB_HIGH_MIX_BPS : CURRENT_ORB_HIGH_MIX_BPS)[totalCredits], mix)
+  const weights = orbWeightsForWager({ denominationSen, bet, paytableVersion: version })
+  assert.equal(weights.length, 9)
+  weights.forEach(([, weight], index) => {
+    assert(weight > 0)
+    assert(Math.abs(weight - (low[index] * (1 - mix / 10_000) + high[index] * mix / 10_000)) < 1e-10)
+  })
+  const components = { ...fixed, ordinary: nOrbs * types.ordinary * mean(weights) }
+  const expected = expectedHoldPayout(denominationSen, bet, false, BONUS.grandAddsToOrbs, version)
   assert(Math.abs(expected.ordinaryOrbs / bet - components.ordinary) < 1e-11)
   for (const tier of ['mini', 'minor', 'major', 'grand'] as const) {
     assert(Math.abs(expected.jackpotPayouts[tier] / bet - components[tier]) < 1e-11)
   }
   const rtp = sum(Object.values(components))
   assert(rtp >= 0.91 && rtp <= 0.93)
-  return { ...betting, bet, totalCredits, components, rtp }
-})))
-
-const published = readFileSync(new URL('../RTP_SCALING_DESIGN.md', import.meta.url), 'utf8')
-  .split('### Full 200-preset theoretical RTP matrix')[1]
-const approvedRows = [...published.matchAll(/^\| (\d+) \| (\d+) \| ([\d,.]+) \| ([\d.]+%) \| ([\d.]+%) \| ([\d.]+%) \| ([\d.]+%) \| ([\d.]+)% \| ([\d.]+%) \| ([\d.]+%) \| (\d+) \|$/gm)]
-assert.equal(rows.length, 200)
-assert.equal(approvedRows.length, rows.length)
-let maxDisplayedDifference = 0
-rows.forEach((row, index) => {
-  const [, size, lines, wager, , , , , predicted] = approvedRows[index]
-  assert.equal(row.betSize, Number(size))
-  assert.equal(row.lines, Number(lines))
-  assert.equal(row.bet, Math.round(Number(wager.replaceAll(',', '')) * 100))
-  const difference = Math.abs(row.rtp * 100 - Number(predicted))
-  assert(difference <= 0.00050001)
-  maxDisplayedDifference = Math.max(difference, maxDisplayedDifference)
+  return { ...wager, components, rtp }
 })
+
+assert.equal(rows.length, 200)
+if (designB) {
+  const published = readFileSync(new URL('../RTP_SCALING_DESIGN.md', import.meta.url), 'utf8')
+    .split('### Full 200-preset theoretical RTP matrix')[1]
+  const approvedRows = [...published.matchAll(/^\| (\d+) \| (\d+) \| ([\d,.]+) \| (?:[\d.]+% \| ){4}([\d.]+)% \| (?:[\d.]+% \| ){2}(\d+) \|$/gm)]
+  assert.equal(approvedRows.length, rows.length)
+  rows.forEach((row, index) => {
+    const [, size, lines, wager, predicted] = approvedRows[index]
+    assert.equal(row.betSize, Number(size))
+    assert.equal(row.lines, Number(lines))
+    assert.equal(row.bet, Math.round(Number(wager.replaceAll(',', '')) * 100))
+    assert(Math.abs(row.rtp * 100 - Number(predicted)) <= 0.00050001)
+  })
+}
 const minimum = rows.reduce((a, b) => a.rtp < b.rtp ? a : b)
 const maximum = rows.reduce((a, b) => a.rtp > b.rtp ? a : b)
-const result = { minimum, maximum, maxDisplayedDifference, holdEntry, paidEntry, freeEntry, freeBoards,
-  finalOrbs: nOrbs / (1 + freeBoards) / holdEntry, sixOrbFinal: sum(endCounts(6, BONUS.respins).map((p, i) => p * i)),
-  nOrbs, grandRate, types, rows }
-const output = process.argv[2]
+const sixOrbEndings = endCounts(6, BONUS.respins)
+const result = { version, minimum, maximum, holdEntry, freeHoldEntry, freeFeatureWithHold, paidEntry, freeEntry, freeBoards,
+  finalOrbs: paidOrbs / holdEntry, freeFinalOrbs: freeOrbs / freeHoldEntry, sixOrbFinal: awardedOrbs(sixOrbEndings),
+  sixOrbReachesTen: sum(sixOrbEndings.slice(10)), nOrbs, grandRate, types, rows }
+const output = process.argv.slice(2).find(arg => arg !== '--design-b')
 if (output) writeFileSync(output, JSON.stringify(result, null, 2) + '\n')
-console.log(`Verified ${rows.length} wagers and nine payout components per wager. RTP ${(minimum.rtp * 100).toFixed(7)}–${(maximum.rtp * 100).toFixed(7)}%.`)
-console.log(`Maximum difference from the published three-decimal estimates is ${maxDisplayedDifference.toFixed(7)} percentage points.`)
+console.log(`Verified math profile ${version} across ${rows.length} wagers. RTP ${(minimum.rtp * 100).toFixed(7)}–${(maximum.rtp * 100).toFixed(7)}%.`)
+console.log(`Hold & Spin entry: ${(holdEntry * 100).toFixed(4)}% paid, ${(freeHoldEntry * 100).toFixed(4)}% per free spin, ${(freeFeatureWithHold * 100).toFixed(4)}% per Lantern feature.`)
 

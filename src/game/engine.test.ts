@@ -147,7 +147,7 @@ describe('Hold & Spin', () => {
     const hit = respin(orbs, 1, () => draws.shift() ?? 0.99, wager)
     expect(hit).toMatchObject({ remaining: BONUS.respins, landed: 1, done: false })
     expect(hit.orbs[0]).toBe(orbs[0])
-    expect(hit.orbs[1]).toEqual(calculateOrbPrize(10, 80, 10))
+    expect(hit.orbs[1]).toEqual(calculateOrbPrize(10, 80, 5))
   })
 
   it('normalizes jackpot types in one draw, with no GRAND orb', () => {
@@ -156,7 +156,7 @@ describe('Hold & Spin', () => {
       const orb = drawOrb(() => (sample + 0.5) / 100_000, true, wager)
       counts['tier' in orb ? orb.tier : 'ordinary']++
     }
-    expect(counts).toEqual({ ordinary: 99_868, mini: 120, minor: 12, major: 0 })
+    expect(counts).toEqual({ ordinary: 99_890, mini: 100, minor: 10, major: 0 })
     const random = vi.fn(() => 0.99999999)
     expect(drawOrb(random, true, wager)).toEqual({ tier: 'major', payoutSen: 5_000_000 })
     expect(random).toHaveBeenCalledTimes(1)
@@ -200,7 +200,7 @@ describe('Hold & Spin', () => {
   })
 
   it('applies the published ordinary schedules at the lightest, reference and heaviest wagers', () => {
-    for (const [credits, expected] of [[8, 1.4959989], [440, 2.5647058], [880, 2.5746687]]) {
+    for (const [credits, expected] of [[8, 1.5365566], [440, 2.417165], [880, 2.4254348]]) {
       const distribution = orbWeightsForWager({ denominationSen: 10, bet: 10 * credits })
       expect(distribution.reduce((sum, [multiplier, weight]) => sum + multiplier * weight / 100, 0)).toBeCloseTo(expected, 8)
       let cumulative = 0
@@ -212,7 +212,7 @@ describe('Hold & Spin', () => {
     }
   })
 
-  it.each([[6, 0.072], [7, 0.072], [8, 0.02], [9, 0.02], [10, 0.01], [11, 0.01], [12, 0.003], [14, 0.003]])(
+  it.each([[6, 0.091], [7, 0.091], [8, 0.043], [9, 0.043], [10, 0.01], [11, 0.01], [12, 0.00105], [14, 0.00105]])(
     'uses one %i-orb landing tier for the entire respin at chance %f', (count, chance) => {
       const prize = calculateOrbPrize(10, 80, 2)
       const held = Array.from({ length: CELLS }, (_, index) => index < count ? prize : null)
@@ -224,10 +224,10 @@ describe('Hold & Spin', () => {
     },
   )
 
-  it('models at least eight final orbs from a six-orb start and keeps GRAND rare and possible', () => {
+  it('models more final orbs from a six-orb start and keeps GRAND rare and possible', () => {
     const board = holdBoardMoments(CELLS, baseOrbChance)
-    expect(board.fromTrigger.orbs).toBeGreaterThanOrEqual(8)
-    expect(board.fromTrigger.eightOrMore).toBeGreaterThan(0.70)
+    expect(board.fromTrigger.orbs).toBeCloseTo(8.871, 3)
+    expect(board.fromTrigger.eightOrMore).toBeGreaterThan(0.85)
     expect(grandBoardChance(CELLS, baseOrbChance)).toBeGreaterThan(0)
     expect(board.full).toBeLessThan(0.000000002)
   })
@@ -238,8 +238,8 @@ describe('Hold & Spin', () => {
     const { line, scatter, freeLine, freeScatter } = result.components
     const hold = expectedHoldPayout(10, 80)
     const modeledRtp = ((line + scatter + freeLine + freeScatter) / result.spins + hold.ordinaryOrbs + hold.jackpots) / 80
-    expect(hold.ordinaryOrbs / 80).toBeCloseTo(0.27449, 4)
-    expect(Math.abs(modeledRtp - 0.914)).toBeLessThan(0.025)
+    expect(hold.ordinaryOrbs / 80).toBeCloseTo(0.34128, 4)
+    expect(Math.abs(modeledRtp - 0.92)).toBeLessThan(0.025)
     expect(hold.jackpotPayouts.major).toBeGreaterThan(0)
     expect(hold.jackpotPayouts.grand).toBeGreaterThan(0)
     expect(result.lineHits).toBeGreaterThan(0)
