@@ -1,10 +1,11 @@
 import { BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CURRENT_MATH_VERSION,
-  DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, LINE_OPTIONS, ORB_VARIETY_VERSION, credits } from './config'
+  DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION, LINE_OPTIONS, ORB_VARIETY_VERSION, credits } from './config'
 import type { Jackpot, JackpotPrizes, PaytableVersion } from './config'
 import { BONUS, BONUS_REBALANCE_HIGH_MIX_BPS, BONUS_REBALANCE_HIGH_WEIGHTS, BONUS_REBALANCE_LOW_WEIGHTS,
   CURRENT_HIGH_ORB_WEIGHTS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_ORB_HIGH_MIX_BPS, CURRENT_ORB_MULTIPLIERS,
-  EARLY_RESPIN_HIGH_MIX_BPS, HIGH_ORB_WEIGHTS, LEGACY_ORB_UNITS, LOW_ORB_WEIGHTS, MINIMUM_WAGER_ORB_HIGH_MIX_BPS,
-  ORB_HIGH_MIX_BPS, ORB_VARIETY_HIGH_MIX_BPS } from './probabilityConfig'
+  EARLY_RESPIN_HIGH_MIX_BPS, HIGH_ORB_WEIGHTS, LATE_RESPIN_HIGH_MIX_BPS, LATE_RESPIN_MINIMUM_MIX_BPS, LEGACY_ORB_UNITS,
+  LOW_ORB_WEIGHTS, MINIMUM_WAGER_ORB_HIGH_MIX_BPS, ORB_HIGH_MIX_BPS, ORB_VARIETY_HIGH_MIX_BPS,
+  ORB_VARIETY_HIGH_WEIGHTS, ORB_VARIETY_LOW_WEIGHTS } from './probabilityConfig'
 
 export type OrdinaryOrb = { value: number; multiplier: number | null; payoutSen: number; displayMyr?: true }
 export type Orb = OrdinaryOrb | { tier: Exclude<Jackpot, 'grand'>; payoutSen: number }
@@ -64,20 +65,17 @@ function buildWagerWeights(mix: Readonly<Partial<Record<number, number>>>, low: 
 }
 const designBWeights = buildWagerWeights(ORB_HIGH_MIX_BPS, LOW_ORB_WEIGHTS, HIGH_ORB_WEIGHTS)
 const rebalanceWeights = buildWagerWeights(BONUS_REBALANCE_HIGH_MIX_BPS, BONUS_REBALANCE_LOW_WEIGHTS, BONUS_REBALANCE_HIGH_WEIGHTS)
-const varietyWeights = buildWagerWeights(ORB_VARIETY_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS,
-  CURRENT_ORB_MULTIPLIERS)
-const earlyRespinWeights = buildWagerWeights(EARLY_RESPIN_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS,
-  CURRENT_ORB_MULTIPLIERS)
-const currentWeights = buildWagerWeights(CURRENT_ORB_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS,
-  CURRENT_ORB_MULTIPLIERS)
-const minimumWagerWeights = blendOrbWeights(MINIMUM_WAGER_ORB_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS,
-  CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_MULTIPLIERS)
 const wagerWeights = {
   [DESIGN_B_VERSION]: designBWeights,
   [BONUS_REBALANCE_VERSION]: rebalanceWeights,
-  [ORB_VARIETY_VERSION]: varietyWeights,
-  [EARLY_RESPIN_VERSION]: earlyRespinWeights,
-  [CURRENT_MATH_VERSION]: currentWeights,
+  [ORB_VARIETY_VERSION]: buildWagerWeights(ORB_VARIETY_HIGH_MIX_BPS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
+  [EARLY_RESPIN_VERSION]: buildWagerWeights(EARLY_RESPIN_HIGH_MIX_BPS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
+  [LATE_RESPIN_VERSION]: buildWagerWeights(LATE_RESPIN_HIGH_MIX_BPS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
+  [CURRENT_MATH_VERSION]: buildWagerWeights(CURRENT_ORB_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
+}
+const minimumWagerWeights = {
+  [LATE_RESPIN_VERSION]: blendOrbWeights(LATE_RESPIN_MINIMUM_MIX_BPS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_HIGH_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
+  [CURRENT_MATH_VERSION]: blendOrbWeights(MINIMUM_WAGER_ORB_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_MULTIPLIERS),
 }
 
 export const isMinimumOrbWager = (denominationSen: number, totalCredits: number) =>
@@ -87,13 +85,16 @@ export function orbWeightsForWager({ denominationSen, bet, paytableVersion = CUR
   Pick<OrbWager, 'denominationSen' | 'bet' | 'paytableVersion'>) {
   if (paytableVersion === 1 || paytableVersion === 2 || paytableVersion === CREDIT_PAYTABLE_VERSION) return orbMultiplierWeights
   const totalCredits = bet / denominationSen
-  if (paytableVersion === CURRENT_MATH_VERSION && isMinimumOrbWager(denominationSen, totalCredits)) return minimumWagerWeights
+  if (isMinimumOrbWager(denominationSen, totalCredits) &&
+      (paytableVersion === LATE_RESPIN_VERSION || paytableVersion === CURRENT_MATH_VERSION)) return minimumWagerWeights[paytableVersion]
   const weights = wagerWeights[paytableVersion].get(totalCredits)
   if (!weights) throw new RangeError('Unsupported total credits for the ordinary orb distribution.')
   return weights
 }
 
-export const ordinaryOrbDistributions = [minimumWagerWeights, ...Object.values(wagerWeights).flatMap(weights => [...weights.values()])]
+export const ordinaryOrbDistributions = [
+  ...Object.values(minimumWagerWeights), ...Object.values(wagerWeights).flatMap(weights => [...weights.values()]),
+]
 for (const denomination of DENOMINATIONS_SEN) {
   for (const multiplier of CURRENT_ORB_MULTIPLIERS) {
     calculateOrbPrize(denomination, denomination * Math.max(...BET_SIZES) * Math.max(...LINE_OPTIONS), multiplier)

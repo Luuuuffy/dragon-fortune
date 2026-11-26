@@ -63,8 +63,10 @@ export const BONUS_REBALANCE_HIGH_MIX_BPS: Readonly<Partial<Record<number, numbe
 }
 
 export const CURRENT_ORB_MULTIPLIERS = [1, 2, 3, 4, 5, 8, 10, 20, 50, 100, 200] as const
-export const CURRENT_LOW_ORB_WEIGHTS = [53, 29, 9, 6, 2, 0.72, 0.23, 0.04, 0.008, 0.0015, 0.0005] as const
-export const CURRENT_HIGH_ORB_WEIGHTS = [26, 36, 19, 13, 4, 1.4, 0.48, 0.09, 0.026, 0.003, 0.001] as const
+export const ORB_VARIETY_LOW_WEIGHTS = [53, 29, 9, 6, 2, 0.72, 0.23, 0.04, 0.008, 0.0015, 0.0005] as const
+export const ORB_VARIETY_HIGH_WEIGHTS = [26, 36, 19, 13, 4, 1.4, 0.48, 0.09, 0.026, 0.003, 0.001] as const
+export const CURRENT_LOW_ORB_WEIGHTS = [25, 20, 21, 16, 13, 3.5, 1.25, 0.2, 0.04, 0.009, 0.001] as const
+export const CURRENT_HIGH_ORB_WEIGHTS = [11, 14, 15, 23, 24, 9, 3.45, 0.46, 0.075, 0.013, 0.002] as const
 // Center the RTP range at 92% among wagers with the same total credits.
 export const ORB_VARIETY_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
   8: 2469, 16: 3754, 18: 3736, 24: 4183, 36: 4307, 38: 4521, 40: 4526,
@@ -78,19 +80,31 @@ export const EARLY_RESPIN_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>
   116: 4114, 174: 4174, 176: 4149, 180: 4182, 190: 4369, 264: 4189, 290: 4222,
   380: 4424, 440: 4220, 580: 4258, 880: 4244,
 }
-export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+export const LATE_RESPIN_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
   8: 1776, 16: 2786, 18: 2788, 24: 3263, 36: 3423, 38: 3636, 40: 3644,
   54: 3635, 58: 3660, 76: 3938, 80: 3931, 88: 3769, 90: 3805, 114: 4038,
   116: 3858, 174: 3923, 176: 3899, 180: 3932, 190: 4118, 264: 3942, 290: 3976,
   380: 4178, 440: 3977, 580: 4016, 880: 4003,
 }
+// Center each credit group's return at 98.5%, leaving room below the 100% cap.
+export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+  8: 3951, 16: 4536, 18: 4492, 24: 4899, 36: 4975, 38: 5189, 40: 5189,
+  54: 5136, 58: 5154, 76: 5418, 80: 5406, 88: 5229, 90: 5265, 114: 5495,
+  116: 5304, 174: 5354, 176: 5328, 180: 5362, 190: 5556, 264: 5361, 290: 5394,
+  380: 5602, 440: 5387, 580: 5424, 880: 5407,
+}
 // Fixed MYR jackpots account for more of the return at the minimum 1¢ × 1 × 8 wager.
-export const MINIMUM_WAGER_ORB_HIGH_MIX_BPS = 520
-export const PAID_ORB_CHANCE = 0.162
-export const FREE_ORB_CHANCE = 0.185
+export const LATE_RESPIN_MINIMUM_MIX_BPS = 520
+export const MINIMUM_WAGER_ORB_HIGH_MIX_BPS = 2450
+export const ORB_VARIETY_PAID_ORB_CHANCE = 0.162
+export const BONUS_REBALANCE_FREE_ORB_CHANCE = 0.185
+export const PAID_ORB_CHANCE = 0.132
+// Independent cell odds calibrated for a one-third chance over a full Lantern feature.
+export const FREE_ORB_CHANCE = 0.199605
 export const BONUS_REBALANCE_RESPIN_RATES = [[8, 0.091], [10, 0.043], [12, 0.01], [CELLS, 0.00105]] as const
 export const EARLY_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.01], [CELLS, 0.00105]] as const
-export const CURRENT_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.02], [CELLS, 0.00105]] as const
+export const LATE_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.02], [CELLS, 0.00105]] as const
+export const CURRENT_RESPIN_RATES = [[8, 0.13], [10, 0.067], [12, 0.023], [CELLS, 0.00105]] as const
 
 // Used only for respins and Free Spins continuing under earlier saved rules.
 export const LEGACY_ORB_UNITS = 8

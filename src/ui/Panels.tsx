@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS,
-  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_TIERS, ORB_VARIETY_VERSION,
+  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_TIERS, LATE_RESPIN_VERSION, ORB_VARIETY_VERSION,
   LINE_CREDITS, LINE_OPTIONS, PAYLINES, SYMBOLS, betPerLineSen, calculateJackpots, denominationLabel, money, totalBetSen,
   wagerCredits } from '../game/config'
 import { BONUS, bonusEntryChance, respinRates } from '../game/bonusConfig'
@@ -69,7 +69,8 @@ const theoreticalRtp = {
   [BONUS_REBALANCE_VERSION]: '91.21–92.80%',
   [ORB_VARIETY_VERSION]: '91.08–92.92%',
   [EARLY_RESPIN_VERSION]: '91.00–93.00%',
-  [CURRENT_MATH_VERSION]: '91.28–92.72%',
+  [LATE_RESPIN_VERSION]: '91.28–92.72%',
+  [CURRENT_MATH_VERSION]: '97.60–99.40%',
 }
 
 function Paytable({ betting, version, prizes }: { betting: Betting; version: PaytableVersion; prizes: JackpotPrizes }) {
@@ -100,6 +101,7 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
     <h3>Red Lantern Scatter</h3>
     <p>Each reel can show one Lantern. A paid trigger starts {LANTERN.initialSpins} automatic Free Spins.
       A qualifying Free Spin awards {LANTERN.extraSpins} more. Chicken, Boat, Lotus and Tiger are the paying symbols in Free Spins.</p>
+    {version === CURRENT_MATH_VERSION && <p>About one in three complete Lantern features leads to Hold &amp; Spin, including any retriggers.</p>}
     <ul className="orb-values">
       {([3, 4, 5] as const).map(count => <li key={count}><b>{count} Lanterns</b> {LANTERN.payouts[count]}× total bet · {money(bet * LANTERN.payouts[count])}</li>)}
     </ul>
@@ -113,7 +115,7 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
         <li key={limit}><b>{rates[index - 1]?.[0] ?? BONUS.triggerCount}–{limit - 1} held</b> {percent(chance)} per empty cell</li>)}
     </ul>
     {scaled && <p>Ordinary multiplier chances depend on Bet Size × Active Lines.
-      {version === CURRENT_MATH_VERSION && isMinimumOrbWager(denominationSen, totalCredits) &&
+      {version >= LATE_RESPIN_VERSION && isMinimumOrbWager(denominationSen, totalCredits) &&
         ' The minimum wager uses its own mix because fixed jackpots account for more of its return.'}
       {' '}These are the chances per ordinary orb for the current <strong>{totalCredits}-credit</strong> wager.</p>}
     <ul className="orb-values">

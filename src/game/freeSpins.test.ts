@@ -6,7 +6,7 @@ import { evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, lanter
   triggersBonus } from './engine'
 import type { Scenario } from './engine'
 import { LANTERN } from './lanternConfig'
-import { BONUS_REBALANCE_WILD_WEIGHTS, REEL_SYMBOL_WEIGHTS } from './probabilityConfig'
+import { BONUS_REBALANCE_WILD_WEIGHTS, FREE_ORB_CHANCE, REEL_SYMBOL_WEIGHTS } from './probabilityConfig'
 import { completeHoldCollection, dismissResult, freeSpinsWin, lastWinSen, newSession, openBonus, resetGame, revealRespin,
   revealSpin, selectBetting, setBankroll, startRespin, startSpin } from './session'
 import type { Session } from './session'
@@ -88,9 +88,8 @@ describe('Red Lantern scatter', () => {
     const modeledRetrigger = lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0)
     expect(Math.abs(sim.lanternTriggers / sim.spins - modeled)).toBeLessThan(0.002)
     expect(Math.abs(sim.freeRetriggers / sim.freePlayed - modeledRetrigger)).toBeLessThan(0.012)
-    expect(sim.freeHoldTriggers / sim.freePlayed).toBeGreaterThan(0.035)
-    expect(sim.freeHoldTriggers / sim.freePlayed).toBeLessThan(0.055)
-    expect(sim.freeFeaturesWithHold / sim.lanternTriggers).toBeGreaterThan(0.20)
+    expect(Math.abs(sim.freeHoldTriggers / sim.freePlayed - 0.060543)).toBeLessThan(0.01)
+    expect(Math.abs(sim.freeFeaturesWithHold / sim.lanternTriggers - 1 / 3)).toBeLessThan(0.05)
     expect(sim.freeLineHits / sim.freePlayed).toBeGreaterThan(sim.lineHits / sim.spins)
     expect(sim.freePlayed).toBe(sim.lanternTriggers * LANTERN.initialSpins + sim.freeRetriggers * LANTERN.extraSpins)
     expect(sim.freeWon).toBeGreaterThan(0)
@@ -113,7 +112,7 @@ describe('Red Lantern scatter', () => {
 
   it('adds Free Spin orbs without changing natural triggers or moving Lanterns', () => {
     const drawOriginal = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights,
-      BONUS_REBALANCE_WILD_WEIGHTS.free, REEL_SYMBOL_WEIGHTS.free, 0.185).drawBoard
+      BONUS_REBALANCE_WILD_WEIGHTS.free, REEL_SYMBOL_WEIGHTS.free, FREE_ORB_CHANCE).drawBoard
     const rng = seededRandom(2526)
     let extraOrbs = 0
     let naturalTriggers = 0

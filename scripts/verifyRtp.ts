@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import {
   BET_SIZES, BONUS_REBALANCE_VERSION, CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, LINE_OPTIONS, PAYLINES, LINE_CREDITS,
-  EARLY_RESPIN_VERSION, ORB_VARIETY_VERSION, calculateJackpots, totalBetSen, wagerCredits,
+  EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION, ORB_VARIETY_VERSION, calculateJackpots, totalBetSen, wagerCredits,
 } from '../src/game/config'
 import { BONUS } from '../src/game/bonusConfig'
 import { LANTERN } from '../src/game/lanternConfig'
@@ -10,8 +10,10 @@ import { REEL_SYMBOL_WEIGHTS, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS, NON_ORB_
   LOW_ORB_WEIGHTS, HIGH_ORB_WEIGHTS, ORB_HIGH_MIX_BPS, BONUS_REBALANCE_WILD_WEIGHTS, BONUS_REBALANCE_ORB_TYPES,
   BONUS_REBALANCE_LOW_WEIGHTS, BONUS_REBALANCE_HIGH_WEIGHTS, BONUS_REBALANCE_HIGH_MIX_BPS, BONUS_REBALANCE_RESPIN_RATES,
   CURRENT_ORB_TYPES, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_HIGH_MIX_BPS, CURRENT_ORB_MULTIPLIERS,
-  CURRENT_RESPIN_RATES, EARLY_RESPIN_HIGH_MIX_BPS, EARLY_RESPIN_RATES, FREE_ORB_CHANCE, MINIMUM_WAGER_ORB_HIGH_MIX_BPS,
-  ORB_VARIETY_HIGH_MIX_BPS, PAID_ORB_CHANCE } from '../src/game/probabilityConfig'
+  BONUS_REBALANCE_FREE_ORB_CHANCE, CURRENT_RESPIN_RATES, EARLY_RESPIN_HIGH_MIX_BPS, EARLY_RESPIN_RATES, FREE_ORB_CHANCE,
+  LATE_RESPIN_HIGH_MIX_BPS, LATE_RESPIN_MINIMUM_MIX_BPS, LATE_RESPIN_RATES, MINIMUM_WAGER_ORB_HIGH_MIX_BPS,
+  ORB_VARIETY_HIGH_MIX_BPS, ORB_VARIETY_HIGH_WEIGHTS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_PAID_ORB_CHANCE,
+  PAID_ORB_CHANCE } from '../src/game/probabilityConfig'
 import { orbWeightsForWager } from '../src/game/orbPrizes'
 import { expectedHoldPayout } from '../src/game/simulation'
 
@@ -32,6 +34,7 @@ const versionFlags = {
   '--profile-5': BONUS_REBALANCE_VERSION,
   '--profile-6': ORB_VARIETY_VERSION,
   '--profile-7': EARLY_RESPIN_VERSION,
+  '--profile-8': LATE_RESPIN_VERSION,
 } as const
 const versionFlag = Object.keys(versionFlags).find(flag => process.argv.includes(flag)) as keyof typeof versionFlags | undefined
 const version = versionFlag ? versionFlags[versionFlag] : CURRENT_MATH_VERSION
@@ -39,11 +42,18 @@ const designB = version === DESIGN_B_VERSION
 const current = version === CURRENT_MATH_VERSION
 const expandedOrbs = version >= ORB_VARIETY_VERSION
 function boardChance(isFree: boolean) {
-  if (isFree && !designB) return FREE_ORB_CHANCE
-  return expandedOrbs ? PAID_ORB_CHANCE : previousOrbChance
+  if (current) return isFree ? FREE_ORB_CHANCE : PAID_ORB_CHANCE
+  if (isFree) return designB ? previousOrbChance : BONUS_REBALANCE_FREE_ORB_CHANCE
+  return expandedOrbs ? ORB_VARIETY_PAID_ORB_CHANCE : previousOrbChance
 }
-const respinRates = current ? CURRENT_RESPIN_RATES : version === EARLY_RESPIN_VERSION ? EARLY_RESPIN_RATES
-  : designB ? BONUS.respinLandingRates : BONUS_REBALANCE_RESPIN_RATES
+const respinRates = {
+  [DESIGN_B_VERSION]: BONUS.respinLandingRates,
+  [BONUS_REBALANCE_VERSION]: BONUS_REBALANCE_RESPIN_RATES,
+  [ORB_VARIETY_VERSION]: BONUS_REBALANCE_RESPIN_RATES,
+  [EARLY_RESPIN_VERSION]: EARLY_RESPIN_RATES,
+  [LATE_RESPIN_VERSION]: LATE_RESPIN_RATES,
+  [CURRENT_MATH_VERSION]: CURRENT_RESPIN_RATES,
+}[version]
 const wildWeights = designB ? WILD_STACK_WEIGHTS : BONUS_REBALANCE_WILD_WEIGHTS
 const reelCache = new Map<string, [number, number][]>()
 const lanternCache = new Map<string, number>()
@@ -247,6 +257,7 @@ for (let step = 0; step < 40; step++) {
     (freeEntry - freeScatterWithHold) * noHoldBranch ** LANTERN.extraSpins
 }
 const freeFeatureWithHold = 1 - noHoldBranch ** LANTERN.initialSpins
+if (current) assert(Math.abs(freeFeatureWithHold - 1 / 3) < 0.00001, 'Expected Hold & Spin in one-third of Lantern features')
 const typeWeights = expandedOrbs ? CURRENT_ORB_TYPES : designB ? DESIGN_B_ORB_TYPES : BONUS_REBALANCE_ORB_TYPES
 const totalTypeWeight = sum(Object.values(typeWeights))
 const types = {
@@ -276,14 +287,17 @@ const wagers = DENOMINATIONS_SEN.flatMap(denominationSen => BET_SIZES.flatMap(be
   return { ...betting, bet, totalCredits, fixed }
 })))
 
-const low = expandedOrbs ? CURRENT_LOW_ORB_WEIGHTS : designB ? LOW_ORB_WEIGHTS : BONUS_REBALANCE_LOW_WEIGHTS
-const high = expandedOrbs ? CURRENT_HIGH_ORB_WEIGHTS : designB ? HIGH_ORB_WEIGHTS : BONUS_REBALANCE_HIGH_WEIGHTS
+const low = current ? CURRENT_LOW_ORB_WEIGHTS : expandedOrbs ? ORB_VARIETY_LOW_WEIGHTS
+  : designB ? LOW_ORB_WEIGHTS : BONUS_REBALANCE_LOW_WEIGHTS
+const high = current ? CURRENT_HIGH_ORB_WEIGHTS : expandedOrbs ? ORB_VARIETY_HIGH_WEIGHTS
+  : designB ? HIGH_ORB_WEIGHTS : BONUS_REBALANCE_HIGH_WEIGHTS
 const multipliers = expandedOrbs ? CURRENT_ORB_MULTIPLIERS : BONUS.orbMultiplierWeights.map(([multiplier]) => multiplier)
 const publishedMix = {
   [DESIGN_B_VERSION]: ORB_HIGH_MIX_BPS,
   [BONUS_REBALANCE_VERSION]: BONUS_REBALANCE_HIGH_MIX_BPS,
   [ORB_VARIETY_VERSION]: ORB_VARIETY_HIGH_MIX_BPS,
   [EARLY_RESPIN_VERSION]: EARLY_RESPIN_HIGH_MIX_BPS,
+  [LATE_RESPIN_VERSION]: LATE_RESPIN_HIGH_MIX_BPS,
   [CURRENT_MATH_VERSION]: CURRENT_ORB_HIGH_MIX_BPS,
 }[version]
 const average = (weights: readonly number[]) => mean(multipliers.map((multiplier, i) => [multiplier, weights[i]]))
@@ -291,17 +305,18 @@ const minimumCredits = BET_SIZES[0] * LINE_OPTIONS[0]
 const minimumDenomination = DENOMINATIONS_SEN[0]
 const rows = wagers.map(({ fixed, ...wager }) => {
   const { denominationSen, bet, totalCredits } = wager
-  const separateMinimum = current && totalCredits === minimumCredits
+  const separateMinimum = version >= LATE_RESPIN_VERSION && totalCredits === minimumCredits
   const minimumWager = separateMinimum && denominationSen === minimumDenomination
   const fixedReturns = wagers.filter(row => row.totalCredits === totalCredits &&
     (!separateMinimum || (row.denominationSen === minimumDenomination) === minimumWager))
     .map(row => sum(Object.values(row.fixed)))
   const fixedSen = 5_000_000 * nOrbs * types.major + 20_000_000 * grandRate
-  const targetMean = (0.92 - (designB ? 0.393 + paidScatter + freeScatter +
+  const targetMean = ((current ? 0.985 : 0.92) - (designB ? 0.393 + paidScatter + freeScatter +
     (nOrbs * (5_000 * types.mini + 20_000 * types.minor) + 0.5025 * fixedSen) / totalCredits :
     (Math.min(...fixedReturns) + Math.max(...fixedReturns)) / 2)) / (nOrbs * types.ordinary)
   const mix = Math.round(10_000 * (targetMean - average(low)) / (average(high) - average(low)))
-  assert.equal(minimumWager ? MINIMUM_WAGER_ORB_HIGH_MIX_BPS : publishedMix[totalCredits], mix)
+  const minimumMix = current ? MINIMUM_WAGER_ORB_HIGH_MIX_BPS : LATE_RESPIN_MINIMUM_MIX_BPS
+  assert.equal(minimumWager ? minimumMix : publishedMix[totalCredits], mix)
   const weights = orbWeightsForWager({ denominationSen, bet, paytableVersion: version })
   assert.equal(weights.length, multipliers.length)
   weights.forEach(([multiplier, weight], index) => {
@@ -316,7 +331,7 @@ const rows = wagers.map(({ fixed, ...wager }) => {
     assert(Math.abs(expected.jackpotPayouts[tier] / bet - components[tier]) < 1e-11)
   }
   const rtp = sum(Object.values(components))
-  assert(rtp >= 0.91 && rtp <= 0.93)
+  assert(current ? rtp < 1 : rtp >= 0.91 && rtp <= 0.93)
   return { ...wager, components, rtp }
 })
 
@@ -361,6 +376,12 @@ const benchmark = {
   meanOrdinaryPayoutSen: ordinary * benchmarkWager.bet / holdFrequency,
   meanPayoutSen: (ordinary + mini + minor + major + grand) * benchmarkWager.bet / holdFrequency,
   payoutUnderRm10: sum(hitDistribution.slice(0, Math.ceil(1000 / benchmarkWager.bet))),
+  chanceOrbAtLeast4x: sum(benchmarkWeights.filter(([multiplier]) => multiplier >= 4).map(([, weight]) => weight)) / totalOrbWeight,
+  chanceOrbAtLeast8x: sum(benchmarkWeights.filter(([multiplier]) => multiplier >= 8).map(([, weight]) => weight)) / totalOrbWeight,
+}
+if (current) {
+  assert(benchmark.medianPayoutSen >= 2500, 'Expected at least RM25 median Hold & Spin payout at RM0.80')
+  assert(benchmark.chanceOrbAtLeast4x > 0.44, 'Expected larger ordinary Gold Orbs')
 }
 const sixOrbEndings = endCounts(6, BONUS.respins)
 const tenOrbHitsAgain = sum(endCounts(10, BONUS.respins).slice(11))

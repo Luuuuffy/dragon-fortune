@@ -5,8 +5,9 @@ import {
 } from './config'
 import { BONUS, binomial, respinLandingChance } from './bonusConfig'
 import { LANTERN, LEGACY_LANTERN_PAYOUTS } from './lanternConfig'
-import { BONUS_REBALANCE_ORB_TYPES, BONUS_REBALANCE_WILD_WEIGHTS, CREDIT_V3_FREE_WEIGHTS, CREDIT_V3_WILD_WEIGHTS,
-  CURRENT_ORB_TYPES, DESIGN_B_ORB_TYPES, FREE_ORB_CHANCE, NON_ORB_WEIGHT, PAID_ORB_CHANCE,
+import { BONUS_REBALANCE_FREE_ORB_CHANCE, BONUS_REBALANCE_ORB_TYPES, BONUS_REBALANCE_WILD_WEIGHTS,
+  CREDIT_V3_FREE_WEIGHTS, CREDIT_V3_WILD_WEIGHTS, CURRENT_ORB_TYPES, DESIGN_B_ORB_TYPES, FREE_ORB_CHANCE, NON_ORB_WEIGHT,
+  ORB_VARIETY_PAID_ORB_CHANCE, PAID_ORB_CHANCE,
   REEL_SYMBOL_WEIGHTS, REEL_WILD_ALLOWED, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS } from './probabilityConfig'
 import { calculateOrbPrize, ordinaryOrbDistributions, orbMultiplierWeights, orbWeightsForWager, priceWagerOrb } from './orbPrizes'
 import type { Orb, OrbWager } from './orbPrizes'
@@ -100,8 +101,9 @@ if (!Number.isFinite(NON_ORB_WEIGHT) || NON_ORB_WEIGHT <= 0 ||
 const previousOrbChance = BONUS.baseOrbWeight / symbolTotal
 export const baseOrbChance = PAID_ORB_CHANCE
 export function boardOrbChance(free: boolean, version: PaytableVersion = CURRENT_MATH_VERSION) {
-  if (free && version >= BONUS_REBALANCE_VERSION) return FREE_ORB_CHANCE
-  return version >= ORB_VARIETY_VERSION ? baseOrbChance : previousOrbChance
+  if (version === CURRENT_MATH_VERSION) return free ? FREE_ORB_CHANCE : baseOrbChance
+  if (free) return version >= BONUS_REBALANCE_VERSION ? BONUS_REBALANCE_FREE_ORB_CHANCE : previousOrbChance
+  return version >= ORB_VARIETY_VERSION ? ORB_VARIETY_PAID_ORB_CHANCE : previousOrbChance
 }
 const reelPositions = Array.from({ length: REELS }, (_, reel) =>
   Array.from({ length: ROWS }, (_, row) => cellAt(reel, row)))
@@ -185,7 +187,11 @@ export function lanternReels(lanternWeight: number, tierWeights: readonly [numbe
 }
 const paidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.paid)
 const freeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.free,
-  REEL_SYMBOL_WEIGHTS.free, boardOrbChance(true))
+  REEL_SYMBOL_WEIGHTS.free, FREE_ORB_CHANCE)
+const varietyPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.paid,
+  REEL_SYMBOL_WEIGHTS.paid, ORB_VARIETY_PAID_ORB_CHANCE)
+const rebalanceFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.free,
+  REEL_SYMBOL_WEIGHTS.free, BONUS_REBALANCE_FREE_ORB_CHANCE)
 const rebalancePaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.paid,
   REEL_SYMBOL_WEIGHTS.paid, previousOrbChance)
 const designBPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, WILD_STACK_WEIGHTS.paid,
@@ -200,12 +206,13 @@ const legacyFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights
   REEL_SYMBOL_WEIGHTS.paid, previousOrbChance)
 
 function reelsFor(free: boolean, version: PaytableVersion) {
+  if (version === CURRENT_MATH_VERSION) return free ? freeReels : paidReels
   if (free) {
-    if (version >= BONUS_REBALANCE_VERSION) return freeReels
+    if (version >= BONUS_REBALANCE_VERSION) return rebalanceFreeReels
     if (version === DESIGN_B_VERSION) return designBFreeReels
     return version === CREDIT_PAYTABLE_VERSION ? creditV3FreeReels : legacyFreeReels
   }
-  if (version >= ORB_VARIETY_VERSION) return paidReels
+  if (version >= ORB_VARIETY_VERSION) return varietyPaidReels
   if (version === BONUS_REBALANCE_VERSION) return rebalancePaidReels
   return version === DESIGN_B_VERSION ? designBPaidReels : previousPaidReels
 }
