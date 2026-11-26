@@ -2,11 +2,11 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS,
-  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS,
+  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_TIERS, ORB_VARIETY_VERSION,
   LINE_CREDITS, LINE_OPTIONS, PAYLINES, SYMBOLS, betPerLineSen, calculateJackpots, denominationLabel, money, totalBetSen,
   wagerCredits } from '../game/config'
 import { BONUS, bonusEntryChance, respinRates } from '../game/bonusConfig'
-import { orbFaceLabel, orbWeightsForWager, priceWagerOrb } from '../game/orbPrizes'
+import { isMinimumOrbWager, orbFaceLabel, orbWeightsForWager, priceWagerOrb } from '../game/orbPrizes'
 import { LANTERN } from '../game/lanternConfig'
 import type { Betting, JackpotPrizes, PaytableVersion, SymbolId } from '../game/config'
 import { SCENARIOS, boardOrbChance, orbTypeProbabilities } from '../game/engine'
@@ -67,12 +67,15 @@ const percent = (chance: number) => `${(chance * 100).toLocaleString('en-MY', { 
 const theoreticalRtp = {
   [DESIGN_B_VERSION]: '91.27–92.69%',
   [BONUS_REBALANCE_VERSION]: '91.21–92.80%',
-  [CURRENT_MATH_VERSION]: '91.08–92.92%',
+  [ORB_VARIETY_VERSION]: '91.08–92.92%',
+  [EARLY_RESPIN_VERSION]: '91.00–93.00%',
+  [CURRENT_MATH_VERSION]: '91.28–92.72%',
 }
 
 function Paytable({ betting, version, prizes }: { betting: Betting; version: PaytableVersion; prizes: JackpotPrizes }) {
   const { denominationSen, betSize } = betting
   const bet = totalBetSen(betting)
+  const totalCredits = wagerCredits(betting)
   const scaled = version >= DESIGN_B_VERSION
   const lineScale = scaled ? betSize : 1
   const awardsTable = scaled ? LINE_CREDITS : CREDIT_V3_LINE_AWARDS
@@ -110,7 +113,9 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
         <li key={limit}><b>{rates[index - 1]?.[0] ?? BONUS.triggerCount}–{limit - 1} held</b> {percent(chance)} per empty cell</li>)}
     </ul>
     {scaled && <p>Ordinary multiplier chances depend on Bet Size × Active Lines.
-      These are the chances per ordinary orb for the current <strong>{wagerCredits(betting)}-credit</strong> wager.</p>}
+      {version === CURRENT_MATH_VERSION && isMinimumOrbWager(denominationSen, totalCredits) &&
+        ' The minimum wager uses its own mix because fixed jackpots account for more of its return.'}
+      {' '}These are the chances per ordinary orb for the current <strong>{totalCredits}-credit</strong> wager.</p>}
     <ul className="orb-values">
       {weights.map(([multiplier, weight]) => {
         const orb = priceWagerOrb(wager, multiplier)
@@ -208,7 +213,7 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
       <h3>Hold & Spin</h3>
       <p>Land six or more Gold Orbs to start with three respins. Orbs stay in their original cells and only empty positions respin. Each newly filled cell resets the counter to three. The round ends at zero respins or a full board.</p>
       <p>Total Credits Wagered is Bet Size × Active Lines. This total determines the ordinary multiplier odds.
-        The same credit total uses the same multiplier odds at every denomination. The Paytable lists the active odds.</p>
+        The minimum 1¢ wager has its own multiplier mix. The Paytable lists the active odds.</p>
       <h3>Lantern Free Spins</h3>
       <p>Land Red Lanterns on three or more reels in a paid spin for {LANTERN.initialSpins} automatic Free Spins.
         Land three or more during a Free Spin for {LANTERN.extraSpins} extra spins. Chicken, Boat, Lotus and Tiger are the paying symbols throughout the feature. Hold &amp; Spin rounds triggered during Free Spins also play automatically.</p>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, calculateJackpots, cellAt,
+import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, EARLY_RESPIN_VERSION,
+  ORB_VARIETY_VERSION, calculateJackpots, cellAt,
   legacyJackpots, parseBankroll, START_BALANCE, totalBetSen } from './config'
 import { calculateOrbPrize } from './orbPrizes'
 import type { Scenario } from './engine'
@@ -66,17 +67,23 @@ describe('round transitions and persistence', () => {
     expect(revealSpin(updated, 'test').last?.line).toBe(55)
   })
 
-  it.each([[DESIGN_B_VERSION, 0], [CURRENT_MATH_VERSION, 1]] as const)(
-    'keeps profile %i respin odds after reloading a paid Hold & Spin', (paytableVersion, landed) => {
+  it.each([
+    [DESIGN_B_VERSION, 6, 0.10, 0], [ORB_VARIETY_VERSION, 6, 0.10, 0],
+    [EARLY_RESPIN_VERSION, 6, 0.10, 1], [EARLY_RESPIN_VERSION, 10, 0.015, 0], [CURRENT_MATH_VERSION, 10, 0.015, 1],
+  ] as const)(
+    'keeps profile %i respin odds after reloading with %i held', (paytableVersion, held, landingRoll, landed) => {
       const active = begin('six')
       if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
       const spin = { ...active.round.spin, scenario: undefined, paytableVersion }
       const pending = reload({ ...active, round: { ...active.round, spin } })
-      const ready = reload(openBonus(revealSpin(pending, 'test'), 'test'))
-      const draws = [0.08, 0.99, 0.99]
+      const opened = reload(openBonus(revealSpin(pending, 'test'), 'test'))
+      const firstDraws = Array.from({ length: held - 6 }, () => [0, 0.99, 0.99]).flat()
+      const ready = held === 6 ? opened :
+        reload(revealRespin(startRespin(opened, () => firstDraws.shift() ?? 0.99), 'test', 1))
+      const draws: number[] = [landingRoll, 0.99, 0.99]
       const respinning = reload(startRespin(ready, () => draws.shift() ?? 0.99))
       if (respinning.round.phase !== 'BONUS_RESPIN') throw new Error('Expected a pending respin')
-      expect(respinning.round.bonus.next?.orbs.filter(Boolean)).toHaveLength(6 + landed)
+      expect(respinning.round.bonus.next?.orbs.filter(Boolean)).toHaveLength(held + landed)
       expect(respinning.round.bonus.next?.remaining).toBe(landed ? 3 : 2)
     },
   )

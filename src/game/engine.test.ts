@@ -27,7 +27,9 @@ describe('bets, paylines and jackpot scaling', () => {
           expect(weights.reduce((sum, [, weight]) => sum + weight, 0)).toBeCloseTo(100, 10)
           expect(weights.every(([multiplier, weight]) => weight > 0 &&
             calculateOrbPrize(denominationSen, bet, multiplier).payoutSen === bet * multiplier)).toBe(true)
-          expect(weights).toBe(orbWeightsForWager({ denominationSen: 1, bet: betSize * lines }))
+          const reference = orbWeightsForWager({ denominationSen: 10, bet: 10 * betSize * lines })
+          if (denominationSen === 1 && bet === 8) expect(weights).not.toEqual(reference)
+          else expect(weights).toBe(reference)
           expect(evaluateLines(Array<SymbolId>(CELLS).fill('tiger'), betPerLineSen(betting), lines).amount)
             .toBe(200 * bet)
           expect(calculateJackpots(denominationSen)).toEqual({
@@ -200,13 +202,16 @@ describe('Hold & Spin', () => {
   })
 
   it('applies the published ordinary schedules at the lightest, reference and heaviest wagers', () => {
-    for (const [credits, expected] of [[8, 1.97580721], [440, 2.12759709], [880, 2.12909416]]) {
-      const distribution = orbWeightsForWager({ denominationSen: 10, bet: 10 * credits })
+    for (const [denominationSen, credits, expected] of [
+      [1, 8, 1.8489468], [10, 8, 1.93069984], [10, 440, 2.07396293], [10, 880, 2.07565527],
+    ]) {
+      const bet = denominationSen * credits
+      const distribution = orbWeightsForWager({ denominationSen, bet })
       expect(distribution.reduce((sum, [multiplier, weight]) => sum + multiplier * weight / 100, 0)).toBeCloseTo(expected, 8)
       let cumulative = 0
       for (const [multiplier, weight] of distribution) {
         const rng = () => (cumulative + weight / 2) / 100
-        expect(drawOrb(rng, false, { ...wager, bet: 10 * credits })).toMatchObject({ multiplier, payoutSen: 10 * credits * multiplier })
+        expect(drawOrb(rng, false, { ...wager, denominationSen, bet })).toMatchObject({ multiplier, payoutSen: bet * multiplier })
         cumulative += weight
       }
     }
@@ -221,7 +226,7 @@ describe('Hold & Spin', () => {
     expect(triggersBonus(generateBoard(rolls(), undefined, false, BONUS_REBALANCE_VERSION))).toBe(false)
   })
 
-  it.each([[6, 0.091], [7, 0.091], [8, 0.043], [9, 0.043], [10, 0.01], [11, 0.01], [12, 0.00105], [14, 0.00105]])(
+  it.each([[6, 0.105], [7, 0.105], [8, 0.044], [9, 0.044], [10, 0.02], [11, 0.02], [12, 0.00105], [14, 0.00105]])(
     'uses one %i-orb landing tier for the entire respin at chance %f', (count, chance) => {
       const prize = calculateOrbPrize(10, 80, 2)
       const held = Array.from({ length: CELLS }, (_, index) => index < count ? prize : null)
@@ -235,10 +240,10 @@ describe('Hold & Spin', () => {
 
   it('models more final orbs from a six-orb start and keeps GRAND rare and possible', () => {
     const board = holdBoardMoments(CELLS, baseOrbChance)
-    expect(board.fromTrigger.orbs).toBeCloseTo(8.871, 3)
+    expect(board.fromTrigger.orbs).toBeCloseTo(9.116, 3)
     expect(board.fromTrigger.eightOrMore).toBeGreaterThan(0.85)
     expect(grandBoardChance(CELLS, baseOrbChance)).toBeGreaterThan(0)
-    expect(board.full).toBeLessThan(0.000000002)
+    expect(board.full).toBeLessThan(0.000000005)
   })
 
   it('accounts for new payouts in a seeded simulation while keeping the six-orb rule', () => {
@@ -247,7 +252,7 @@ describe('Hold & Spin', () => {
     const { line, scatter, freeLine, freeScatter } = result.components
     const hold = expectedHoldPayout(10, 80)
     const modeledRtp = ((line + scatter + freeLine + freeScatter) / result.spins + hold.ordinaryOrbs + hold.jackpots) / 80
-    expect(hold.ordinaryOrbs / 80).toBeCloseTo(0.50850, 4)
+    expect(hold.ordinaryOrbs / 80).toBeCloseTo(0.50963, 4)
     expect(Math.abs(modeledRtp - 0.92)).toBeLessThan(0.025)
     expect(hold.jackpotPayouts.major).toBeGreaterThan(0)
     expect(hold.jackpotPayouts.grand).toBeGreaterThan(0)

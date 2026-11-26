@@ -66,15 +66,31 @@ export const CURRENT_ORB_MULTIPLIERS = [1, 2, 3, 4, 5, 8, 10, 20, 50, 100, 200] 
 export const CURRENT_LOW_ORB_WEIGHTS = [53, 29, 9, 6, 2, 0.72, 0.23, 0.04, 0.008, 0.0015, 0.0005] as const
 export const CURRENT_HIGH_ORB_WEIGHTS = [26, 36, 19, 13, 4, 1.4, 0.48, 0.09, 0.026, 0.003, 0.001] as const
 // Center the RTP range at 92% among wagers with the same total credits.
-export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+export const ORB_VARIETY_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
   8: 2469, 16: 3754, 18: 3736, 24: 4183, 36: 4307, 38: 4521, 40: 4526,
   54: 4498, 58: 4520, 76: 4792, 80: 4783, 88: 4614, 90: 4650, 114: 4882,
   116: 4697, 174: 4756, 176: 4730, 180: 4764, 190: 4954, 264: 4769, 290: 4803,
   380: 5008, 440: 4801, 580: 4839, 880: 4824,
 }
+export const EARLY_RESPIN_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+  8: 1849, 16: 3153, 18: 3139, 24: 3588, 36: 3719, 38: 3930, 40: 3935,
+  54: 3912, 58: 3934, 76: 4205, 80: 4196, 88: 4030, 90: 4066, 114: 4296,
+  116: 4114, 174: 4174, 176: 4149, 180: 4182, 190: 4369, 264: 4189, 290: 4222,
+  380: 4424, 440: 4220, 580: 4258, 880: 4244,
+}
+export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+  8: 1776, 16: 2786, 18: 2788, 24: 3263, 36: 3423, 38: 3636, 40: 3644,
+  54: 3635, 58: 3660, 76: 3938, 80: 3931, 88: 3769, 90: 3805, 114: 4038,
+  116: 3858, 174: 3923, 176: 3899, 180: 3932, 190: 4118, 264: 3942, 290: 3976,
+  380: 4178, 440: 3977, 580: 4016, 880: 4003,
+}
+// Fixed MYR jackpots account for more of the return at the minimum 1¢ × 1 × 8 wager.
+export const MINIMUM_WAGER_ORB_HIGH_MIX_BPS = 520
 export const PAID_ORB_CHANCE = 0.162
 export const FREE_ORB_CHANCE = 0.185
 export const BONUS_REBALANCE_RESPIN_RATES = [[8, 0.091], [10, 0.043], [12, 0.01], [CELLS, 0.00105]] as const
+export const EARLY_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.01], [CELLS, 0.00105]] as const
+export const CURRENT_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.02], [CELLS, 0.00105]] as const
 
 // Used only for respins and Free Spins continuing under earlier saved rules.
 export const LEGACY_ORB_UNITS = 8

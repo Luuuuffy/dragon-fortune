@@ -1,6 +1,6 @@
 import {
   BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS, CURRENT_MATH_VERSION,
-  DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_SYMBOLS, LINE_CREDITS,
+  DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_SYMBOLS, LINE_CREDITS, ORB_VARIETY_VERSION,
   PAYLINES, REELS, ROWS, SYMBOLS, cellAt, totalBetSen,
 } from './config'
 import { BONUS, binomial, respinLandingChance } from './bonusConfig'
@@ -101,7 +101,7 @@ const previousOrbChance = BONUS.baseOrbWeight / symbolTotal
 export const baseOrbChance = PAID_ORB_CHANCE
 export function boardOrbChance(free: boolean, version: PaytableVersion = CURRENT_MATH_VERSION) {
   if (free && version >= BONUS_REBALANCE_VERSION) return FREE_ORB_CHANCE
-  return version === CURRENT_MATH_VERSION ? baseOrbChance : previousOrbChance
+  return version >= ORB_VARIETY_VERSION ? baseOrbChance : previousOrbChance
 }
 const reelPositions = Array.from({ length: REELS }, (_, reel) =>
   Array.from({ length: ROWS }, (_, row) => cellAt(reel, row)))
@@ -205,7 +205,7 @@ function reelsFor(free: boolean, version: PaytableVersion) {
     if (version === DESIGN_B_VERSION) return designBFreeReels
     return version === CREDIT_PAYTABLE_VERSION ? creditV3FreeReels : legacyFreeReels
   }
-  if (version === CURRENT_MATH_VERSION) return paidReels
+  if (version >= ORB_VARIETY_VERSION) return paidReels
   if (version === BONUS_REBALANCE_VERSION) return rebalancePaidReels
   return version === DESIGN_B_VERSION ? designBPaidReels : previousPaidReels
 }
@@ -234,13 +234,11 @@ const designBOrbTypes = orbTypeTable(DESIGN_B_ORB_TYPES)
 const rebalanceOrbTypes = orbTypeTable(BONUS_REBALANCE_ORB_TYPES)
 const currentOrbTypes = orbTypeTable(CURRENT_ORB_TYPES)
 const previousOrbTypes = orbTypeTable(BONUS.orbTypeWeights)
-const orbTypesByVersion = {
-  [DESIGN_B_VERSION]: designBOrbTypes,
-  [BONUS_REBALANCE_VERSION]: rebalanceOrbTypes,
-  [CURRENT_MATH_VERSION]: currentOrbTypes,
+function orbTypesForVersion(version: PaytableVersion = CURRENT_MATH_VERSION) {
+  if (version >= ORB_VARIETY_VERSION) return currentOrbTypes
+  if (version === BONUS_REBALANCE_VERSION) return rebalanceOrbTypes
+  return version === DESIGN_B_VERSION ? designBOrbTypes : previousOrbTypes
 }
-const orbTypesForVersion = (version: PaytableVersion = CURRENT_MATH_VERSION) =>
-  version === 1 || version === 2 || version === CREDIT_PAYTABLE_VERSION ? previousOrbTypes : orbTypesByVersion[version]
 export const orbTypeProbabilities = (version?: PaytableVersion) => orbTypesForVersion(version).probabilities
 
 export const sampleBoard = (): SymbolId[] => [
