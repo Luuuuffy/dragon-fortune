@@ -23,7 +23,7 @@ npm run simulate -- 1000000 10 1 8 2026
 
 The developer simulation accepts a paid spin count such as 10,000, 100,000, or 1,000,000, followed by denomination in sen, bet size, active lines, and a seed. A decimal second argument such as `0.80` selects the original fixed-bet argument format with active lines and seed. In that mode orb and jackpot prices use a 1¢ denomination and bet size 1. The simulator runs without reading or writing browser saves. It reports paid line hits, Hold & Spin entries, Lantern triggers and retriggers, average feature payouts, estimated return, and jackpot counts and frequencies.
 
-The theoretical checker independently calculates nine payout components for all 200 current wagers. Pass an output path after `--` to save the results as JSON, or pass `--design-b` to check the previous math profile. After building, run `npx playwright install chromium` and `npm run test:browser` to check the production build in isolated browser sessions. Set `DRAGON_FORTUNE_BROWSER_CHANNEL=chrome` to use installed Google Chrome.
+The theoretical checker independently calculates nine payout components for all 200 current wagers. Pass an output path after `--` to save the results as JSON. Use `--design-b` or `--profile-5` to check earlier math profiles. After building, run `npx playwright install chromium` and `npm run test:browser` to check the production build in isolated browser sessions. Set `DRAGON_FORTUNE_BROWSER_CHANNEL=chrome` to use installed Google Chrome.
 
 ## Play from a phone on the same Wi-Fi
 
@@ -65,14 +65,14 @@ To check a new orb landing, select **Six orbs → seventh on first respin**, clo
 
 ## Current game mathematics
 
-- Each of the 15 cells rolls independently for a Gold Orb, at 15.57% on paid spins and 18.5% in Free Spins. Hold & Spin requires at least six visible orbs.
+- Each of the 15 cells rolls independently for a Gold Orb, at 16.2% on paid spins and 18.5% in Free Spins. Hold & Spin requires at least six visible orbs.
 - Reels 2–5 can each draw a stack of one to three adjacent Panda Wilds. The longest stack that fits is used when a Lantern or Gold Orb blocks the requested size. The stack roll requests a Wild on 13% of eligible paid reels and 20% of eligible Free Spin reels. The weight order is no stack, one Wild, two Wilds, then three Wilds. The paid weights are 87, 8, 3, and 2. The Free Spin weights are 80, 12, 5, and 3.
 - During Lantern Free Spins, a board with four or fewer Gold Orbs has a 35% roll to replace one regular paying symbol with an extra Gold Orb. Wilds and Lanterns stay in place. This roll can bring a board up to five orbs. The six-orb trigger comes from the independent cell draws.
 - One credit equals the selected denomination. Bet Size sets the credits wagered per active line. Total bet is denomination × Bet Size × Active Lines. The first N paths are active. Panda Wilds substitute for standard symbols when matching from the first reel. Each winning paid or free line pays base credits × Bet Size × denomination.
 - During Hold & Spin, each empty position rolls independently. The chance per empty cell is 9.1% with 6–7 held, 4.3% with 8–9, 1.0% with 10–11, and 0.105% with 12–14 at the start of the respin. A hit restores three respins and a miss uses one.
 - An ordinary orb stores its multiplier, credit value, and payout when it lands. Its payout equals the triggering total wager × multiplier. The face shows credits below RM1 denomination and virtual MYR at RM1 and RM2. At eight lines and Bet Size 1, a 1× orb shows **8** credits at 10¢, **RM8** at RM1, and **RM16** at RM2. Raising Bet Size to 2 at 10¢ gives a 1× orb value of **16** credits.
-- All nine ordinary multipliers from 1× to 200× remain available. Total Credits Wagered equals Bet Size × Active Lines. Each supported credit total uses a mix of the two ordinary-orb distributions. The Paytable displays the active distribution. [Ordinary orb schedule](src/game/probabilityConfig.ts)
-- Each orb on a qualifying starting board or in Hold & Spin draws its type once. The chances are ordinary 99.88999%, MINI 0.10%, MINOR 0.01%, and MAJOR 0.00001%. Each special orb pays its stored jackpot.
+- Ordinary orbs can pay 1×, 2×, 3×, 4×, 5×, 8×, 10×, 20×, 50×, 100×, or 200×. Total Credits Wagered equals Bet Size × Active Lines. Each supported credit total uses a mix of the two ordinary-orb distributions. The Paytable displays the active distribution. [Ordinary orb schedule](src/game/probabilityConfig.ts)
+- Each orb on a qualifying starting board or in Hold & Spin draws its type once. The chances are ordinary 99.98349%, MINI 0.015%, MINOR 0.0015%, and MAJOR 0.00001%. Each special orb pays its stored jackpot.
 - MINI pays 5,000 × denomination in sen and MINOR pays 20,000 × denomination in sen. MAJOR pays RM 50,000 and GRAND pays RM 200,000. Filling all 15 Hold & Spin cells adds GRAND to the board’s other prizes.
 - Lantern Scatter pays 2× the total wager for three, 5× for four, and 25× for five. The scatter count is capped by the number of reels with room. The Lantern count draw preserves the Gold Orb distribution. Paid and free weights govern entry and retrigger rates, and tier weights tune the count. Free Spin settings must keep expected retrigger awards below one additional spin per spin played.
 - These rules and probabilities are original demo math. The game has no payments or cashouts.
@@ -89,17 +89,21 @@ The nine paying symbols share the paid draw equally. On free boards, Chicken, Bo
 
 ### Hold & Spin rebalance
 
-| Theoretical result | Previous | Current |
-|---|---:|---:|
-| Hold & Spin per paid spin | 2.00% | 2.00% |
-| Hold & Spin per Lantern Free Spin | 2.00% | 4.37% |
-| At least one Hold & Spin per Lantern feature, including retriggers | 12.50% | 25.28% |
-| Average final orbs from exactly six | 8.17 | 8.87 |
-| Chance of finishing with at least 10 orbs from exactly six | 13.81% | 37.45% |
-| Average ordinary-orb payout per Hold & Spin at 8 credits wagered | 12.31× | 13.69× |
-| Theoretical RTP across all 200 wagers, including jackpots | 91.27–92.69% | 91.21–92.80% |
+| Theoretical result | Profile 4 | Profile 5 | Current |
+|---|---:|---:|---:|
+| Hold & Spin per paid spin | 2.00% | 2.00% | 2.41% |
+| Hold & Spin per Lantern Free Spin | 2.00% | 4.37% | 4.37% |
+| Lantern features with at least one Hold & Spin, including retriggers | 12.50% | 25.28% | 25.28% |
+| Average final orbs from exactly six | 8.17 | 8.87 | 8.87 |
+| Chance of finishing with at least 10 orbs from exactly six | 13.81% | 37.45% | 37.45% |
+| Median Hold & Spin at 10¢ × 1 × 8 lines | RM8.80 | RM10.40 | RM13.60 |
+| Mean ordinary-orb portion of Hold & Spin at 10¢ × 1 × 8 lines | RM9.85 | RM10.95 | RM14.10 |
+| Mean Hold & Spin including jackpots at 10¢ × 1 × 8 lines | RM16.81 | RM17.24 | RM15.08 |
+| Theoretical RTP across all 200 wagers, including jackpots | 91.27–92.69% | 91.21–92.80% | 91.08–92.92% |
 
-The rebalance puts more of the return into Hold & Spin through more frequent free-board entries, more landings from six to nine held, and a reweighted ordinary orb mix. The average ordinary payout per Hold & Spin is about 2–11% higher across the supported wagers. The odds shift toward shorter Panda stacks, reducing the return from large line wins while keeping the credit awards for each match. The higher initial orb density lowers the free retrigger rate from 3.07% to 2.81%. MINI and MINOR fell from 0.12% and 0.012% per awarded orb to 0.10% and 0.010%, so their award frequency per paid spin stays within 1% of the previous rate as more orbs are awarded. GRAND is still awarded for a full board, with the modeled rate moving from 0.816 to 0.830 awards per billion paid spins including Free Spins. [RTP checker](scripts/verifyRtp.ts)
+In profile 5, the higher Free Spin orb density raised Hold & Spin entries and reduced the Lantern retrigger rate from 3.07% to 2.81%. Shorter Panda stacks directed more return from line wins into Hold & Spin. The current profile retains those Free Spin and respin rules and raises the paid Gold Orb density. The extra paid orbs reduce opening Lantern entry from 1.71% to 1.68%. Each line match still pays the same number of credits.
+
+At the RM0.80 wager, the chance of a Hold & Spin payout below RM10 fell from 39.17% to 13.06%. The new 4× and 8× orbs pay 32 and 64 credits at this wager. MINI and MINOR fell from 0.10% and 0.01% per awarded orb to 0.015% and 0.0015%, shifting return from rare jackpot awards into ordinary payouts. Jackpot prize amounts stay the same. MAJOR's per-orb odds stay the same, while the extra boards and orbs raise its expected awards per paid spin. GRAND's full-board rate moves from 0.830 to 0.961 awards per billion paid spins including Free Spins. Larger wagers also get more entries, with the average ordinary payout per entry decreasing up to 12.1% at the highest credit total. [RTP checker](scripts/verifyRtp.ts)
 
 ### Rebalancing audit
 
@@ -138,7 +142,7 @@ Version 4 persists the locked Free Spins wager, remaining spins, accumulated pay
 
 Version 5 adds stored orb payouts and music volume. Existing in-progress rounds retain their previous jackpot schedule and banked orb values. New orbs rolled after the update use the dynamic ordinary prize formula. New rounds receive the denomination-based jackpot schedule.
 
-New wagers save math profile 5. In-progress rounds keep the profile and wager they started with through Free Spins and Hold & Spin. The same LocalStorage record carries a gameplay revision so a control press can be checked against the saved phase, round and wager after taking the save lock. A settled Hold & Spin saves its award before presentation. Reloading during collection replays the animation against that award. Once collection finishes or is skipped, the presentation completion flag is saved with the round.
+New wagers save math profile 6. In-progress rounds keep the profile and wager they started with through Free Spins and Hold & Spin. The same LocalStorage record carries a gameplay revision so a control press can be checked against the saved phase, round and wager after taking the save lock. A settled Hold & Spin saves its award before presentation. Reloading during collection replays the animation against that award. Once collection finishes or is skipped, the presentation completion flag is saved with the round.
 
 ## Sound timing
 

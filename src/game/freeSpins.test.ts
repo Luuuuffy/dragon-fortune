@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, REELS, ROWS, START_BALANCE, calculateJackpots, cellAt } from './config'
+import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, REELS, ROWS,
+  START_BALANCE, calculateJackpots, cellAt } from './config'
 import type { SymbolId } from './config'
 import { evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, lanternReels, seededRandom, startingOrbs,
   triggersBonus } from './engine'
 import type { Scenario } from './engine'
 import { LANTERN } from './lanternConfig'
-import { CURRENT_WILD_STACK_WEIGHTS, REEL_SYMBOL_WEIGHTS } from './probabilityConfig'
+import { BONUS_REBALANCE_WILD_WEIGHTS, REEL_SYMBOL_WEIGHTS } from './probabilityConfig'
 import { completeHoldCollection, dismissResult, freeSpinsWin, lastWinSen, newSession, openBonus, resetGame, revealRespin,
   revealSpin, selectBetting, setBankroll, startRespin, startSpin } from './session'
 import type { Session } from './session'
@@ -112,7 +113,7 @@ describe('Red Lantern scatter', () => {
 
   it('adds Free Spin orbs without changing natural triggers or moving Lanterns', () => {
     const drawOriginal = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights,
-      CURRENT_WILD_STACK_WEIGHTS.free, REEL_SYMBOL_WEIGHTS.free, 0.185).drawBoard
+      BONUS_REBALANCE_WILD_WEIGHTS.free, REEL_SYMBOL_WEIGHTS.free, 0.185).drawBoard
     const rng = seededRandom(2526)
     let extraOrbs = 0
     let naturalTriggers = 0
@@ -171,7 +172,7 @@ describe('Red Lantern scatter', () => {
 })
 
 describe('automatic Free Spins', () => {
-  it.each([[3, 3_000], [DESIGN_B_VERSION, 6_000], [CURRENT_MATH_VERSION, 6_000]] as const)(
+  it.each([[3, 3_000], [DESIGN_B_VERSION, 6_000], [BONUS_REBALANCE_VERSION, 6_000], [CURRENT_MATH_VERSION, 6_000]] as const)(
     'locks profile %i across the triggering wager and free line payout', (version, payout) => {
     vi.useFakeTimers()
     const start = selectBetting(funded(), { denominationSen: 10, betSize: 3 })

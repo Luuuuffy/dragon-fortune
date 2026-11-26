@@ -1,9 +1,9 @@
-import { CELLS, CURRENT_MATH_VERSION } from './config'
+import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION } from './config'
 import type { PaytableVersion } from './config'
-import { BONUS, CURRENT_RESPIN_RATES } from './probabilityConfig'
+import { BONUS, BONUS_REBALANCE_RESPIN_RATES } from './probabilityConfig'
 export { BONUS } from './probabilityConfig'
 
-for (const rates of [BONUS.respinLandingRates, CURRENT_RESPIN_RATES]) {
+for (const rates of [BONUS.respinLandingRates, BONUS_REBALANCE_RESPIN_RATES]) {
   if (rates.at(-1)?.[0] !== CELLS || rates.some(([limit, chance], index) =>
     !Number.isInteger(limit) || limit <= (rates[index - 1]?.[0] ?? BONUS.triggerCount) ||
     !Number.isFinite(chance) || chance < 0 || chance > 1)) {
@@ -12,7 +12,7 @@ for (const rates of [BONUS.respinLandingRates, CURRENT_RESPIN_RATES]) {
 }
 
 export const respinRates = (version: PaytableVersion = CURRENT_MATH_VERSION) =>
-  version === CURRENT_MATH_VERSION ? CURRENT_RESPIN_RATES : BONUS.respinLandingRates
+  version >= BONUS_REBALANCE_VERSION ? BONUS_REBALANCE_RESPIN_RATES : BONUS.respinLandingRates
 
 export const respinLandingChance = (held: number, version?: PaytableVersion) =>
   respinRates(version).find(([limit]) => held < limit)?.[1] ?? 0

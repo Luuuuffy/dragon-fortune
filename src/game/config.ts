@@ -61,8 +61,10 @@ export const SYMBOLS = {
 } as const
 export const CREDIT_PAYTABLE_VERSION = 3
 export const DESIGN_B_VERSION = 4
-export const CURRENT_MATH_VERSION = 5
-export type PaytableVersion = 1 | 2 | typeof CREDIT_PAYTABLE_VERSION | typeof DESIGN_B_VERSION | typeof CURRENT_MATH_VERSION
+export const BONUS_REBALANCE_VERSION = 5
+export const CURRENT_MATH_VERSION = 6
+export type PaytableVersion = 1 | 2 | typeof CREDIT_PAYTABLE_VERSION | typeof DESIGN_B_VERSION |
+  typeof BONUS_REBALANCE_VERSION | typeof CURRENT_MATH_VERSION
 const standardLineCredits = { 3: 10, 4: 25, 5: 100 } as const
 export const CREDIT_V3_LINE_AWARDS = {
   '9': standardLineCredits, '10': standardLineCredits, J: standardLineCredits, Q: standardLineCredits,

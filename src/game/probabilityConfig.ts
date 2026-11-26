@@ -34,13 +34,14 @@ export const WILD_STACK_WEIGHTS = {
   free: [80, 8, 6, 6],
 } as const
 
-export const CURRENT_WILD_STACK_WEIGHTS = {
+export const BONUS_REBALANCE_WILD_WEIGHTS = {
   paid: [87, 8, 3, 2],
   free: [80, 12, 5, 3],
 } as const
 
 export const DESIGN_B_ORB_TYPES = { ordinary: 99.86799, mini: 0.12, minor: 0.012, major: 0.00001 } as const
-export const CURRENT_ORB_TYPES = { ordinary: 99.88999, mini: 0.10, minor: 0.01, major: 0.00001 } as const
+export const BONUS_REBALANCE_ORB_TYPES = { ordinary: 99.88999, mini: 0.10, minor: 0.01, major: 0.00001 } as const
+export const CURRENT_ORB_TYPES = { ordinary: 99.98349, mini: 0.015, minor: 0.0015, major: 0.00001 } as const
 
 // Design B's published schedule. The high distribution is blended in these basis points.
 export const ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
@@ -51,25 +52,35 @@ export const ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
 }
 export const LOW_ORB_WEIGHTS = [90, 8, 1.5, 0.35, 0.10, 0.04, 0.008, 0.0015, 0.0005] as const
 export const HIGH_ORB_WEIGHTS = [40.7, 25, 16, 14, 3.7, 0.45, 0.13, 0.018, 0.002] as const
-export const CURRENT_LOW_ORB_WEIGHTS = [65.7, 30, 3.8, 0.4, 0.07, 0.02, 0.008, 0.0015, 0.0005] as const
-export const CURRENT_HIGH_ORB_WEIGHTS = [21, 35, 30, 12, 1.7, 0.24, 0.055, 0.004, 0.001] as const
+export const BONUS_REBALANCE_LOW_WEIGHTS = [65.7, 30, 3.8, 0.4, 0.07, 0.02, 0.008, 0.0015, 0.0005] as const
+export const BONUS_REBALANCE_HIGH_WEIGHTS = [21, 35, 30, 12, 1.7, 0.24, 0.055, 0.004, 0.001] as const
 // Blend the ordinary orb schedules by credits to center each group's theoretical RTP at 92%.
-export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+export const BONUS_REBALANCE_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
   8: 1022, 16: 4661, 18: 4966, 24: 5875, 36: 6584, 38: 6783, 40: 6845,
   54: 7123, 58: 7195, 76: 7549, 80: 7573, 88: 7520, 90: 7554, 114: 7804,
   116: 7697, 174: 7864, 176: 7851, 180: 7878, 190: 8009, 264: 7962, 290: 7998,
   380: 8162, 440: 8050, 580: 8098, 880: 8116,
 }
 
+export const CURRENT_ORB_MULTIPLIERS = [1, 2, 3, 4, 5, 8, 10, 20, 50, 100, 200] as const
+export const CURRENT_LOW_ORB_WEIGHTS = [53, 29, 9, 6, 2, 0.72, 0.23, 0.04, 0.008, 0.0015, 0.0005] as const
+export const CURRENT_HIGH_ORB_WEIGHTS = [26, 36, 19, 13, 4, 1.4, 0.48, 0.09, 0.026, 0.003, 0.001] as const
+// Center the RTP range at 92% among wagers with the same total credits.
+export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+  8: 2469, 16: 3754, 18: 3736, 24: 4183, 36: 4307, 38: 4521, 40: 4526,
+  54: 4498, 58: 4520, 76: 4792, 80: 4783, 88: 4614, 90: 4650, 114: 4882,
+  116: 4697, 174: 4756, 176: 4730, 180: 4764, 190: 4954, 264: 4769, 290: 4803,
+  380: 5008, 440: 4801, 580: 4839, 880: 4824,
+}
+export const PAID_ORB_CHANCE = 0.162
 export const FREE_ORB_CHANCE = 0.185
-export const CURRENT_RESPIN_RATES = [[8, 0.091], [10, 0.043], [12, 0.01], [CELLS, 0.00105]] as const
+export const BONUS_REBALANCE_RESPIN_RATES = [[8, 0.091], [10, 0.043], [12, 0.01], [CELLS, 0.00105]] as const
 
 // Used only for respins and Free Spins continuing under earlier saved rules.
 export const LEGACY_ORB_UNITS = 8
 
 export const BONUS = {
   triggerCount: 6,
-  targetEntryChance: 0.02,
   baseOrbWeight: 16.6,
   freeExtraOrbChance: 0.35,
   respins: 3,

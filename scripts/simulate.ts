@@ -1,6 +1,6 @@
 import { CELLS, JACKPOT_TIERS, LEGACY_BETS, LEGACY_LINE_COUNTS, money, parseBankroll, totalBetSen } from '../src/game/config'
 import { BONUS, bonusEntryChance, holdBoardMoments } from '../src/game/bonusConfig'
-import { baseOrbChance, boardOrbChance, lanternCountOdds, orbTypeProbabilities } from '../src/game/engine'
+import { boardOrbChance, lanternCountOdds, orbTypeProbabilities } from '../src/game/engine'
 import { expectedHoldPayout, simulate } from '../src/game/simulation'
 import { validBetting } from '../src/game/session'
 
@@ -29,9 +29,10 @@ const { won, bonusWon, components, triggers, hits, lineHits, jackpotCounts, jack
   simulate({ spins, denominationSen, bet, lines, seed, legacy })
 const percent = (ratio: number) => `${(100 * ratio).toFixed(6)}%`
 const expectedHold = expectedHoldPayout(denominationSen, bet, legacy)
-const modeledEntry = bonusEntryChance(CELLS, baseOrbChance)
 const version = legacy ? 2 : undefined
-const board = holdBoardMoments(CELLS, baseOrbChance, version)
+const paidOrbChance = boardOrbChance(false, version)
+const modeledEntry = bonusEntryChance(CELLS, paidOrbChance)
+const board = holdBoardMoments(CELLS, paidOrbChance, version)
 const regularPerSpin = (components.line + components.scatter + components.freeLine + components.freeScatter) / spins
 console.log(`Dragon Fortune simulation | ${money(denominationSen)} denomination | ${money(bet)} wager | ${lines} lines | seed ${seed}`)
 console.table({
@@ -40,7 +41,6 @@ console.table({
   'Paid Hold & Spin triggers': triggers,
   'Total Hold & Spin triggers': holdTriggers,
   'Average spins per bonus': triggers ? (spins / triggers).toFixed(2) : '—',
-  'Target bonus frequency': percent(BONUS.targetEntryChance),
   'Modeled bonus frequency': percent(modeledEntry),
   'Observed bonus frequency': percent(triggers / spins),
   'Average final orbs (all starts)': holdTriggers ? (holdFinalOrbs / holdTriggers).toFixed(3) : '—',

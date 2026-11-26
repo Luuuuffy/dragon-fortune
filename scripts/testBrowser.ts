@@ -104,7 +104,11 @@ async function verifyBonuses(browser: Browser, mobile: boolean) {
     const paytable = page.getByRole('dialog', { name: 'Paytable' })
     const tiger = paytable.getByRole('row', { name: /Tiger/ })
     assert.deepEqual(await tiger.getByRole('cell').allTextContents(), ['6', '44', '110', '400'])
-    assert.match(await paytable.innerText(), /16-credit/)
+    const paytableText = await paytable.innerText()
+    assert.match(paytableText, /16-credit/)
+    assert.match(paytableText, /2\.41% per paid spin and 4\.37% per Lantern Free Spin/)
+    assert.match(paytableText, /4× 64 credits/)
+    assert.match(paytableText, /8× 128 credits/)
     await activate('Close')
 
     await chooseScenario(page, 'sixThenHit')

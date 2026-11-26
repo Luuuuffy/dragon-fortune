@@ -1,6 +1,8 @@
-import { BET_SIZES, CELLS, CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, LINE_OPTIONS, credits } from './config'
+import { BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CURRENT_MATH_VERSION,
+  DENOMINATIONS_SEN, DESIGN_B_VERSION, LINE_OPTIONS, credits } from './config'
 import type { Jackpot, JackpotPrizes, PaytableVersion } from './config'
-import { BONUS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_ORB_HIGH_MIX_BPS,
+import { BONUS, BONUS_REBALANCE_HIGH_MIX_BPS, BONUS_REBALANCE_HIGH_WEIGHTS, BONUS_REBALANCE_LOW_WEIGHTS,
+  CURRENT_HIGH_ORB_WEIGHTS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_ORB_HIGH_MIX_BPS, CURRENT_ORB_MULTIPLIERS,
   HIGH_ORB_WEIGHTS, LEGACY_ORB_UNITS, LOW_ORB_WEIGHTS, ORB_HIGH_MIX_BPS } from './probabilityConfig'
 
 export type OrdinaryOrb = { value: number; multiplier: number | null; payoutSen: number; displayMyr?: true }
@@ -44,30 +46,38 @@ export function configureOrbMultipliers(
 }
 
 export const orbMultiplierWeights = configureOrbMultipliers(BONUS.orbMultiplierWeights, BONUS.maxOrbMultiplier)
-function buildWagerWeights(mix: Readonly<Partial<Record<number, number>>>, low: readonly number[], high: readonly number[]) {
+function buildWagerWeights(mix: Readonly<Partial<Record<number, number>>>, low: readonly number[], high: readonly number[],
+  multipliers: readonly number[] = orbMultiplierWeights.map(([multiplier]) => multiplier)) {
   return new Map(BET_SIZES.flatMap(size => LINE_OPTIONS.map(lines => {
     const total = size * lines
     const blend = mix[total]
     if (blend === undefined) throw new RangeError(`Missing ordinary orb distribution for ${total} credits.`)
-    const weights = BONUS.orbMultiplierWeights.map(([multiplier], index) => [multiplier,
+    const weights = multipliers.map((multiplier, index) => [multiplier,
       (low[index] * (10_000 - blend) + high[index] * blend) / 10_000] as const)
     return [total, configureOrbMultipliers(weights, BONUS.maxOrbMultiplier)] as const
   })))
 }
 const designBWeights = buildWagerWeights(ORB_HIGH_MIX_BPS, LOW_ORB_WEIGHTS, HIGH_ORB_WEIGHTS)
-const currentWeights = buildWagerWeights(CURRENT_ORB_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS)
+const rebalanceWeights = buildWagerWeights(BONUS_REBALANCE_HIGH_MIX_BPS, BONUS_REBALANCE_LOW_WEIGHTS, BONUS_REBALANCE_HIGH_WEIGHTS)
+const currentWeights = buildWagerWeights(CURRENT_ORB_HIGH_MIX_BPS, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS,
+  CURRENT_ORB_MULTIPLIERS)
+const wagerWeights = {
+  [DESIGN_B_VERSION]: designBWeights,
+  [BONUS_REBALANCE_VERSION]: rebalanceWeights,
+  [CURRENT_MATH_VERSION]: currentWeights,
+}
 
 export function orbWeightsForWager({ denominationSen, bet, paytableVersion = CURRENT_MATH_VERSION }:
   Pick<OrbWager, 'denominationSen' | 'bet' | 'paytableVersion'>) {
-  if (paytableVersion < DESIGN_B_VERSION) return orbMultiplierWeights
-  const weights = (paytableVersion === CURRENT_MATH_VERSION ? currentWeights : designBWeights).get(bet / denominationSen)
+  if (paytableVersion === 1 || paytableVersion === 2 || paytableVersion === CREDIT_PAYTABLE_VERSION) return orbMultiplierWeights
+  const weights = wagerWeights[paytableVersion].get(bet / denominationSen)
   if (!weights) throw new RangeError('Unsupported total credits for the ordinary orb distribution.')
   return weights
 }
 
-export const ordinaryOrbDistributions = [...designBWeights.values(), ...currentWeights.values()]
+export const ordinaryOrbDistributions = Object.values(wagerWeights).flatMap(weights => [...weights.values()])
 for (const denomination of DENOMINATIONS_SEN) {
-  for (const [multiplier] of orbMultiplierWeights) {
+  for (const multiplier of CURRENT_ORB_MULTIPLIERS) {
     calculateOrbPrize(denomination, denomination * Math.max(...BET_SIZES) * Math.max(...LINE_OPTIONS), multiplier)
   }
 }

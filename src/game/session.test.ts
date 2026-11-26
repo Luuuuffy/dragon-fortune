@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, calculateJackpots, cellAt, legacyJackpots, parseBankroll, START_BALANCE, totalBetSen } from './config'
+import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, calculateJackpots, cellAt,
+  legacyJackpots, parseBankroll, START_BALANCE, totalBetSen } from './config'
 import { calculateOrbPrize } from './orbPrizes'
 import type { Scenario } from './engine'
 import { completeHoldCollection, dismissResult, lastWinSen, newSession, openBonus, resetGame, resetStats, revealRespin, revealSpin,
@@ -106,6 +107,22 @@ describe('round transitions and persistence', () => {
     expect(respinning.round.bonus.next?.orbs[0]).toEqual(ready.round.bonus.orbs[0])
     expect(respinning.balance).toEqual(ready.balance)
   })
+
+  it.each([[BONUS_REBALANCE_VERSION, true], [CURRENT_MATH_VERSION, false]] as const)(
+    'keeps profile %i jackpot odds for respins after a reload', (paytableVersion, mini) => {
+      const active = begin('six')
+      if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
+      const spin = { ...active.round.spin, scenario: undefined, paytableVersion }
+      const pending = reload({ ...active, round: { ...active.round, spin } })
+      const ready = reload(openBonus(revealSpin(pending, 'test'), 'test'))
+      const draws = [0, 0.999, 0]
+      const respinning = reload(startRespin(ready, () => draws.shift() ?? 0.99))
+      if (respinning.round.phase !== 'BONUS_RESPIN') throw new Error('Expected a pending respin')
+      const orb = respinning.round.bonus.next?.orbs[1]
+      if (mini) expect(orb).toEqual({ tier: 'mini', payoutSen: 5000 })
+      else expect(orb).toEqual(calculateOrbPrize(1, 8, 1))
+    },
+  )
 
   it.each(['six', 'seven', 'mini', 'minor', 'major'] as const)('saves every intermediate %s bonus state', scenario => {
     const revealed = reload(revealSpin(reload(begin(scenario)), 'test'))

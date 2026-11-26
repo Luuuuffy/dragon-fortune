@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
-import { BET_SIZES, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS, CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS,
+import { BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS,
+  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS,
   LINE_CREDITS, LINE_OPTIONS, PAYLINES, SYMBOLS, betPerLineSen, calculateJackpots, denominationLabel, money, totalBetSen,
   wagerCredits } from '../game/config'
 import { BONUS, bonusEntryChance, respinRates } from '../game/bonusConfig'
@@ -63,7 +64,11 @@ export function Modal({ children, close, title, className = '' }: { children: Re
 const matchCounts = [2, 3, 4, 5] as const
 
 const percent = (chance: number) => `${(chance * 100).toLocaleString('en-MY', { maximumFractionDigits: 8 })}%`
-const currentRtp = '91.21–92.80%'
+const theoreticalRtp = {
+  [DESIGN_B_VERSION]: '91.27–92.69%',
+  [BONUS_REBALANCE_VERSION]: '91.21–92.80%',
+  [CURRENT_MATH_VERSION]: '91.08–92.92%',
+}
 
 function Paytable({ betting, version, prizes }: { betting: Betting; version: PaytableVersion; prizes: JackpotPrizes }) {
   const { denominationSen, betSize } = betting
@@ -77,6 +82,7 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
   const totalWeight = weights.reduce((sum, [, weight]) => sum + weight, 0)
   const rates = respinRates(version)
   const entryRate = (free: boolean) => (100 * bonusEntryChance(CELLS, boardOrbChance(free, version))).toFixed(2)
+  const rtp = version === 1 || version === 2 || version === CREDIT_PAYTABLE_VERSION ? undefined : theoreticalRtp[version]
   return <>
     <p>{scaled ? <>Paid and free line wins multiply the base credit award by Bet Size. The table shows awards at
       your current Bet Size of <strong>{betSize}</strong>.</> : 'This round uses the previous fixed-credit paytable.'}
@@ -116,7 +122,7 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
         <br/>{tier === 'grand' ? 'Full board' : `${percent(types[tier])} per qualifying orb`}</li>)}
     </ul>
     <p>MINI, MINOR and MAJOR orbs pay their named jackpot. Fill every position to win GRAND {BONUS.grandAddsToOrbs ? 'in addition to the visible orb prizes' : 'as the full feature payout'}. Any regular line wins from the triggering spin are included in the final result.</p>
-    {scaled && <p>Theoretical return across supported wagers is <strong>{version === CURRENT_MATH_VERSION ? currentRtp : '91.27–92.69%'}</strong> for this virtual game.</p>}
+    {rtp && <p>Theoretical return across supported wagers is <strong>{rtp}</strong> for this virtual game.</p>}
   </>
 }
 
@@ -198,7 +204,7 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
       <h3>Spin the reels</h3>
       <p>Choose a denomination, bet size and line count. One credit is worth the selected denomination. Your total bet is credits per line × active lines × denomination. Press Spin or Space to play. Matches count from the first reel along an active path. Tiger pays from two matches and other paying symbols from three. Panda Wilds can complete a match.</p>
       <p>Press Stop or Space while the reels are moving to see the result immediately.</p>
-      <p>Paid spins and Free Spins multiply base line credits by Bet Size. Across all supported wagers, the theoretical return for new wagers is {currentRtp}.</p>
+      <p>Paid spins and Free Spins multiply base line credits by Bet Size. Across all supported wagers, the theoretical return for new wagers is {theoreticalRtp[CURRENT_MATH_VERSION]}.</p>
       <h3>Hold & Spin</h3>
       <p>Land six or more Gold Orbs to start with three respins. Orbs stay in their original cells and only empty positions respin. Each newly filled cell resets the counter to three. The round ends at zero respins or a full board.</p>
       <p>Total Credits Wagered is Bet Size × Active Lines. This total determines the ordinary multiplier odds.

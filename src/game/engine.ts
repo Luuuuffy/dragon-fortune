@@ -1,11 +1,12 @@
 import {
-  CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS, CURRENT_MATH_VERSION, DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_SYMBOLS, LINE_CREDITS,
+  BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS, CURRENT_MATH_VERSION,
+  DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_SYMBOLS, LINE_CREDITS,
   PAYLINES, REELS, ROWS, SYMBOLS, cellAt, totalBetSen,
 } from './config'
 import { BONUS, binomial, respinLandingChance } from './bonusConfig'
 import { LANTERN, LEGACY_LANTERN_PAYOUTS } from './lanternConfig'
-import { CREDIT_V3_FREE_WEIGHTS, CREDIT_V3_WILD_WEIGHTS, CURRENT_ORB_TYPES, CURRENT_WILD_STACK_WEIGHTS,
-  DESIGN_B_ORB_TYPES, FREE_ORB_CHANCE, NON_ORB_WEIGHT,
+import { BONUS_REBALANCE_ORB_TYPES, BONUS_REBALANCE_WILD_WEIGHTS, CREDIT_V3_FREE_WEIGHTS, CREDIT_V3_WILD_WEIGHTS,
+  CURRENT_ORB_TYPES, DESIGN_B_ORB_TYPES, FREE_ORB_CHANCE, NON_ORB_WEIGHT, PAID_ORB_CHANCE,
   REEL_SYMBOL_WEIGHTS, REEL_WILD_ALLOWED, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS } from './probabilityConfig'
 import { calculateOrbPrize, ordinaryOrbDistributions, orbMultiplierWeights, orbWeightsForWager, priceWagerOrb } from './orbPrizes'
 import type { Orb, OrbWager } from './orbPrizes'
@@ -96,9 +97,12 @@ if (!Number.isFinite(NON_ORB_WEIGHT) || NON_ORB_WEIGHT <= 0 ||
     !Number.isFinite(symbolTotal) || BONUS.baseOrbWeight < 0) {
   throw new RangeError('Symbol weights must be finite and nonnegative.')
 }
-export const baseOrbChance = BONUS.baseOrbWeight / symbolTotal
-export const boardOrbChance = (free: boolean, version: PaytableVersion = CURRENT_MATH_VERSION) =>
-  free && version === CURRENT_MATH_VERSION ? FREE_ORB_CHANCE : baseOrbChance
+const previousOrbChance = BONUS.baseOrbWeight / symbolTotal
+export const baseOrbChance = PAID_ORB_CHANCE
+export function boardOrbChance(free: boolean, version: PaytableVersion = CURRENT_MATH_VERSION) {
+  if (free && version >= BONUS_REBALANCE_VERSION) return FREE_ORB_CHANCE
+  return version === CURRENT_MATH_VERSION ? baseOrbChance : previousOrbChance
+}
 const reelPositions = Array.from({ length: REELS }, (_, reel) =>
   Array.from({ length: ROWS }, (_, row) => cellAt(reel, row)))
 
@@ -179,16 +183,33 @@ export function lanternReels(lanternWeight: number, tierWeights: readonly [numbe
     },
   }
 }
-const paidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, CURRENT_WILD_STACK_WEIGHTS.paid)
-const freeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, CURRENT_WILD_STACK_WEIGHTS.free,
+const paidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.paid)
+const freeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.free,
   REEL_SYMBOL_WEIGHTS.free, boardOrbChance(true))
-const designBPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights)
-const designBFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, WILD_STACK_WEIGHTS.free, REEL_SYMBOL_WEIGHTS.free)
-const previousPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, CREDIT_V3_WILD_WEIGHTS.paid)
-const creditV3FreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, CREDIT_V3_WILD_WEIGHTS.free, CREDIT_V3_FREE_WEIGHTS)
-const legacyFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, CREDIT_V3_WILD_WEIGHTS.free)
-export const lanternCountOdds = (free: boolean, version: PaytableVersion = CURRENT_MATH_VERSION) =>
-  (version === CURRENT_MATH_VERSION ? free ? freeReels : paidReels : free ? designBFreeReels : designBPaidReels).odds
+const rebalancePaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, BONUS_REBALANCE_WILD_WEIGHTS.paid,
+  REEL_SYMBOL_WEIGHTS.paid, previousOrbChance)
+const designBPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, WILD_STACK_WEIGHTS.paid,
+  REEL_SYMBOL_WEIGHTS.paid, previousOrbChance)
+const designBFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, WILD_STACK_WEIGHTS.free,
+  REEL_SYMBOL_WEIGHTS.free, previousOrbChance)
+const previousPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, CREDIT_V3_WILD_WEIGHTS.paid,
+  REEL_SYMBOL_WEIGHTS.paid, previousOrbChance)
+const creditV3FreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, CREDIT_V3_WILD_WEIGHTS.free,
+  CREDIT_V3_FREE_WEIGHTS, previousOrbChance)
+const legacyFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, CREDIT_V3_WILD_WEIGHTS.free,
+  REEL_SYMBOL_WEIGHTS.paid, previousOrbChance)
+
+function reelsFor(free: boolean, version: PaytableVersion) {
+  if (free) {
+    if (version >= BONUS_REBALANCE_VERSION) return freeReels
+    if (version === DESIGN_B_VERSION) return designBFreeReels
+    return version === CREDIT_PAYTABLE_VERSION ? creditV3FreeReels : legacyFreeReels
+  }
+  if (version === CURRENT_MATH_VERSION) return paidReels
+  if (version === BONUS_REBALANCE_VERSION) return rebalancePaidReels
+  return version === DESIGN_B_VERSION ? designBPaidReels : previousPaidReels
+}
+export const lanternCountOdds = (free: boolean, version: PaytableVersion = CURRENT_MATH_VERSION) => reelsFor(free, version).odds
 if (lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0) * LANTERN.extraSpins >= 1) {
   throw new Error('Free Spin Lantern weight must keep expected retrigger awards below one per spin.')
 }
@@ -210,10 +231,16 @@ function orbTypeTable(weights: Readonly<Record<typeof orbTypes[number], number>>
     probabilities: types.map(([type, weight]) => [type, weight / total] as const) }
 }
 const designBOrbTypes = orbTypeTable(DESIGN_B_ORB_TYPES)
+const rebalanceOrbTypes = orbTypeTable(BONUS_REBALANCE_ORB_TYPES)
 const currentOrbTypes = orbTypeTable(CURRENT_ORB_TYPES)
 const previousOrbTypes = orbTypeTable(BONUS.orbTypeWeights)
+const orbTypesByVersion = {
+  [DESIGN_B_VERSION]: designBOrbTypes,
+  [BONUS_REBALANCE_VERSION]: rebalanceOrbTypes,
+  [CURRENT_MATH_VERSION]: currentOrbTypes,
+}
 const orbTypesForVersion = (version: PaytableVersion = CURRENT_MATH_VERSION) =>
-  version === CURRENT_MATH_VERSION ? currentOrbTypes : version === DESIGN_B_VERSION ? designBOrbTypes : previousOrbTypes
+  version === 1 || version === 2 || version === CREDIT_PAYTABLE_VERSION ? previousOrbTypes : orbTypesByVersion[version]
 export const orbTypeProbabilities = (version?: PaytableVersion) => orbTypesForVersion(version).probabilities
 
 export const sampleBoard = (): SymbolId[] => [
@@ -229,13 +256,8 @@ export const sampleOrbs = (board: SymbolId[], betting = DEFAULT_BETTING): Slots 
 export function generateBoard(rng: Random, scenario?: Scenario, free = false, version: PaytableVersion = CURRENT_MATH_VERSION): SymbolId[] {
   const freeSymbols = free && version >= CREDIT_PAYTABLE_VERSION
   if (!scenario) {
-    if (!free) {
-      const reels = version === CURRENT_MATH_VERSION ? paidReels : version === DESIGN_B_VERSION ? designBPaidReels : previousPaidReels
-      return reels.drawBoard(rng)
-    }
-    const reels = version === CURRENT_MATH_VERSION ? freeReels : version === DESIGN_B_VERSION ? designBFreeReels
-      : freeSymbols ? creditV3FreeReels : legacyFreeReels
-    const board = reels.drawBoard(rng)
+    const board = reelsFor(free, version).drawBoard(rng)
+    if (!free) return board
     // The extra orb can make near misses more visible. Qualifying boards come from the independent cell draws.
     const orbCount = board.filter(symbol => symbol === 'orb').length
     if (orbCount < BONUS.triggerCount - 1 && freeExtraOrbChance > 0 && rng() < freeExtraOrbChance) {
