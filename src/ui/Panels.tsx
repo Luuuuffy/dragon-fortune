@@ -94,13 +94,14 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
     </ul>
     <p>Paying symbols match from the first reel. On reels 2–5, one to three Panda Wilds can stack and substitute for standard paying symbols. Each active line pays its highest qualifying combination.</p>
     <h3>Hold & Spin prizes</h3>
-    <p>Six or more Gold Orbs start the feature. Orb faces show virtual MYR. Each ordinary orb pays the triggering spin’s total bet × its multiplier.</p>
+    <p>Six or more Gold Orbs start the feature. Ordinary orb faces show credits below RM1 denomination and virtual MYR at RM1 and RM2.
+      Each ordinary orb pays the triggering spin’s total bet × its multiplier.</p>
     {designB && <p>Higher Total Credits Wagered (Bet Size × Active Lines) makes larger ordinary multipliers more likely.
       These are the chances per ordinary orb for the current <strong>{wagerCredits(betting)}-credit</strong> wager.</p>}
     <ul className="orb-values">
       {weights.map(([multiplier, weight]) => {
         const orb = priceWagerOrb(wager, multiplier)
-        return <li key={multiplier}><b>{multiplier}×</b> {orbFaceLabel(orb)}<br/>{percent(weight / totalWeight)}</li>
+        return <li key={multiplier}><b>{multiplier}×</b> {orbFaceLabel(orb)}{!orb.displayMyr && ' credits'}<br/>{percent(weight / totalWeight)}</li>
       })}
     </ul>
     <ul className="orb-values">

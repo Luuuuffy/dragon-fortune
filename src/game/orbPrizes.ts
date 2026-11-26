@@ -1,4 +1,4 @@
-import { BET_SIZES, CELLS, DENOMINATIONS_SEN, DESIGN_B_VERSION, LINE_OPTIONS, credits, money } from './config'
+import { BET_SIZES, CELLS, DENOMINATIONS_SEN, DESIGN_B_VERSION, LINE_OPTIONS, credits } from './config'
 import type { Jackpot, JackpotPrizes, PaytableVersion } from './config'
 import { BONUS, HIGH_ORB_WEIGHTS, LEGACY_ORB_UNITS, LOW_ORB_WEIGHTS, ORB_HIGH_MIX_BPS } from './probabilityConfig'
 
@@ -23,8 +23,8 @@ export const priceWagerOrb = ({ denominationSen, bet, legacyBetSize }: Pick<OrbW
   multiplier: number) => legacyBetSize === undefined ? calculateOrbPrize(denominationSen, bet, multiplier)
   : calculateOrbPrize(denominationSen, LEGACY_ORB_UNITS * denominationSen * legacyBetSize, multiplier, false)
 
-export const orbFaceLabel = ({ payoutSen }: OrdinaryOrb) => payoutSen % 100 === 0
-  ? `RM${credits(payoutSen, 100)}` : money(payoutSen).replace('RM ', 'RM')
+export const orbFaceLabel = ({ value, payoutSen, displayMyr }: OrdinaryOrb) =>
+  displayMyr ? `RM${credits(payoutSen, 100)}` : credits(value, 1)
 
 export function configureOrbMultipliers(
   tiers: readonly (readonly [number, number])[], maximum: number,
