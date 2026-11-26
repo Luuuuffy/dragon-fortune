@@ -1,22 +1,30 @@
-import { BET_SIZES, CELLS, DENOMINATIONS_SEN } from './config'
-import type { Jackpot, JackpotPrizes } from './config'
-import { BASE_ORB_UNITS_BY_DENOMINATION, BONUS, DEFAULT_BASE_ORB_UNITS } from './probabilityConfig'
+import { BET_SIZES, CELLS, DENOMINATIONS_SEN, DESIGN_B_VERSION, LINE_OPTIONS, credits } from './config'
+import type { Jackpot, JackpotPrizes, PaytableVersion } from './config'
+import { BONUS, HIGH_ORB_WEIGHTS, LEGACY_ORB_UNITS, LOW_ORB_WEIGHTS, ORB_HIGH_MIX_BPS } from './probabilityConfig'
 
-export type OrdinaryOrb = { value: number; multiplier: number | null; payoutSen: number }
+export type OrdinaryOrb = { value: number; multiplier: number | null; payoutSen: number; displayMyr?: true }
 export type Orb = OrdinaryOrb | { tier: Exclude<Jackpot, 'grand'>; payoutSen: number }
-export type OrbWager = { denominationSen: number; betSize: number; jackpotPrizes: JackpotPrizes }
+export type OrbWager = { denominationSen: number; bet: number; jackpotPrizes: JackpotPrizes;
+  legacyBetSize?: number; paytableVersion?: PaytableVersion }
 export const MAX_STORED_ORB_PAYOUT = Math.floor(Number.MAX_SAFE_INTEGER / CELLS)
 
-export function calculateOrbPrize(denominationSen: number, betSize: number, multiplier: number,
-  baseUnits = BASE_ORB_UNITS_BY_DENOMINATION[denominationSen] ?? DEFAULT_BASE_ORB_UNITS): OrdinaryOrb {
-  const value = baseUnits * betSize * multiplier
-  const payoutSen = value * denominationSen
-  if (![denominationSen, betSize, multiplier, baseUnits, value, payoutSen]
+export function calculateOrbPrize(denominationSen: number, bet: number, multiplier: number,
+  displayMyr = denominationSen >= 100): OrdinaryOrb {
+  const payoutSen = bet * multiplier
+  const value = payoutSen / denominationSen
+  if (![denominationSen, bet, multiplier, value, payoutSen]
     .every(number => Number.isSafeInteger(number) && number > 0) || payoutSen > MAX_STORED_ORB_PAYOUT) {
-    throw new RangeError('Gold Orb units, denomination, bet size and multiplier must produce a safe positive prize.')
+    throw new RangeError('Gold Orb bet, denomination and multiplier must produce a safe positive whole-credit prize.')
   }
-  return { multiplier, value, payoutSen }
+  return { multiplier, value, payoutSen, ...(displayMyr ? { displayMyr: true } : {}) }
 }
+
+export const priceWagerOrb = ({ denominationSen, bet, legacyBetSize }: Pick<OrbWager, 'denominationSen' | 'bet' | 'legacyBetSize'>,
+  multiplier: number) => legacyBetSize === undefined ? calculateOrbPrize(denominationSen, bet, multiplier)
+  : calculateOrbPrize(denominationSen, LEGACY_ORB_UNITS * denominationSen * legacyBetSize, multiplier, false)
+
+export const orbFaceLabel = (orb: OrdinaryOrb) => orb.displayMyr
+  ? `RM${credits(orb.payoutSen, 100)}` : credits(orb.value, 1)
 
 export function configureOrbMultipliers(
   tiers: readonly (readonly [number, number])[], maximum: number,
@@ -35,8 +43,26 @@ export function configureOrbMultipliers(
 }
 
 export const orbMultiplierWeights = configureOrbMultipliers(BONUS.orbMultiplierWeights, BONUS.maxOrbMultiplier)
+const designBWeights = new Map(BET_SIZES.flatMap(size => LINE_OPTIONS.map(lines => {
+  const total = size * lines
+  const high = ORB_HIGH_MIX_BPS[total]
+  if (high === undefined) throw new RangeError(`Missing Design B distribution for ${total} credits.`)
+  const weights = BONUS.orbMultiplierWeights.map(([multiplier], index) => [multiplier,
+    (LOW_ORB_WEIGHTS[index] * (10_000 - high) + HIGH_ORB_WEIGHTS[index] * high) / 10_000] as const)
+  return [total, configureOrbMultipliers(weights, BONUS.maxOrbMultiplier)] as const
+})))
+
+export function orbWeightsForWager({ denominationSen, bet, paytableVersion = DESIGN_B_VERSION }:
+  Pick<OrbWager, 'denominationSen' | 'bet' | 'paytableVersion'>) {
+  if (paytableVersion !== DESIGN_B_VERSION) return orbMultiplierWeights
+  const weights = designBWeights.get(bet / denominationSen)
+  if (!weights) throw new RangeError('Unsupported total credits for Design B.')
+  return weights
+}
+
+export const ordinaryOrbDistributions = [...designBWeights.values()]
 for (const denomination of DENOMINATIONS_SEN) {
-  for (const size of BET_SIZES) {
-    for (const [multiplier] of orbMultiplierWeights) calculateOrbPrize(denomination, size, multiplier)
+  for (const [multiplier] of orbMultiplierWeights) {
+    calculateOrbPrize(denomination, denomination * Math.max(...BET_SIZES) * Math.max(...LINE_OPTIONS), multiplier)
   }
 }

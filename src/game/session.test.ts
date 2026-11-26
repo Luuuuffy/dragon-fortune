@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CELLS, calculateJackpots, legacyJackpots, parseBankroll, START_BALANCE } from './config'
+import { CELLS, calculateJackpots, cellAt, legacyJackpots, parseBankroll, START_BALANCE, totalBetSen } from './config'
 import { calculateOrbPrize } from './orbPrizes'
 import type { Scenario } from './engine'
 import { completeHoldCollection, dismissResult, lastWinSen, newSession, openBonus, resetGame, resetStats, revealRespin, revealSpin,
@@ -41,12 +41,43 @@ describe('round transitions and persistence', () => {
     const active = begin('none')
     if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
     const { paytableVersion, ...previous } = active.round.spin
-    expect(paytableVersion).toBe(2)
+    expect(paytableVersion).toBe(4)
     const board = previous.board.map((symbol, position) => position % 3 === 1 ? 'J' as const : symbol)
     const original = reload({ ...active, round: { ...active.round, spin: { ...previous, board } } })
     expect(revealSpin(original, 'test').last?.line).toBe(35)
+    const previousV2 = reload({ ...active, round: { ...active.round, spin: { ...previous, paytableVersion: 2, board } } })
+    expect(revealSpin(previousV2, 'test').last?.line).toBe(22)
+    const previousV3 = reload({ ...active, round: { ...active.round, spin: { ...previous, paytableVersion: 3, board } } })
+    expect(revealSpin(previousV3, 'test').last?.line).toBe(100)
     const updated = reload({ ...active, round: { ...active.round, spin: { ...active.round.spin, board } } })
-    expect(revealSpin(updated, 'test').last?.line).toBe(22)
+    expect(revealSpin(updated, 'test').last?.line).toBe(55)
+  })
+
+  it('persists the two-Tiger credit award and pays it once at a higher bet size', () => {
+    const betting = { denominationSen: 100, betSize: 3, lines: 8 }
+    const active = begin('none', selectBetting(funded(), betting))
+    if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
+    active.round.spin.board[cellAt(0, 1)] = 'tiger'
+    active.round.spin.board[cellAt(1, 1)] = 'wild'
+    const settled = reload(revealSpin(reload(active), 'test'))
+    expect(settled.last).toMatchObject({ line: 900, total: 900, lines: [{ symbol: 'tiger', positions: [1, 4] }] })
+    expect(settled.balance).toBe(START_BALANCE - totalBetSen(betting) + 900)
+    expect(revealSpin(settled, 'test')).toBe(settled)
+  })
+
+  it('continues a committed profile 3 bonus with its old orb odds', () => {
+    const active = begin('six', selectBetting(funded(), { denominationSen: 20, betSize: 3, lines: 38 }))
+    if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
+    const spin = { ...active.round.spin, scenario: undefined, paytableVersion: 3 as const }
+    const pending = reload({ ...active, round: { ...active.round, spin } })
+    const ready = reload(openBonus(revealSpin(pending, 'test'), 'test'))
+    if (ready.round.phase !== 'BONUS_READY') throw new Error('Expected a ready bonus')
+    const draws = [0, 0.9985]
+    const respinning = reload(startRespin(ready, () => draws.shift() ?? 0.99))
+    if (respinning.round.phase !== 'BONUS_RESPIN') throw new Error('Expected a pending respin')
+    expect(respinning.round.bonus.next?.orbs[1]).toEqual({ tier: 'mini', payoutSen: 100_000 })
+    expect(respinning.round.bonus.next?.orbs[0]).toEqual(ready.round.bonus.orbs[0])
+    expect(respinning.balance).toEqual(ready.balance)
   })
 
   it.each(['six', 'seven', 'mini', 'minor', 'major'] as const)('saves every intermediate %s bonus state', scenario => {
@@ -193,7 +224,7 @@ describe('round transitions and persistence', () => {
       ...old, version: 1, bet: 80, lines: 1, balance: START_BALANCE - 80,
       stats: { ...state.stats, wagered: 80 },
       settings: { muted: true, volume: 0.19, speed: 1, reduced: false },
-      round: { ...state.round, orbs: null, spin: { ...oldSpin, bet: 80, lines: 1 } },
+      round: { ...state.round, orbs: null, spin: { ...oldSpin, bet: 80, lines: 1, paytableVersion: 2 } },
     }))!
     expect(migrated).toMatchObject({ version: 5, initialBankroll: START_BALANCE,
       balance: START_BALANCE - 80, settings: { muted: true, musicVolume: 0.35, volume: 0.19, reelVolume: 1 } })
@@ -212,7 +243,7 @@ describe('round transitions and persistence', () => {
     const oldSlots = (orbs: typeof bonus.orbs) => orbs.map(orb => orb ? { multiplier: 2 } : null)
     const migrated = parseSession(JSON.stringify({ ...active, version: 2, boardOrbs: undefined,
       round: { ...active.round, bonus: {
-        ...bonus, spin: oldSpin, orbs: oldSlots(bonus.orbs), next: { ...bonus.next, orbs: oldSlots(bonus.next!.orbs) },
+        ...bonus, spin: { ...oldSpin, paytableVersion: 2 }, orbs: oldSlots(bonus.orbs), next: { ...bonus.next, orbs: oldSlots(bonus.next!.orbs) },
       } },
     }))!
     const settled = revealRespin(reload(migrated), 'test', 1)
@@ -231,7 +262,7 @@ describe('round transitions and persistence', () => {
     expect(lastWinSen(reload(miss))).toBe(0)
     const missed = reload(revealSpin(miss, 'miss'))
     expect(lastWinSen(missed)).toBe(0)
-    expect(missed.boardOrbs[4]).toEqual(calculateOrbPrize(10, 1, 2))
+    expect(missed.boardOrbs[4]).toEqual(calculateOrbPrize(10, 80, 2))
 
     function bonusAt(session: Session, id: string) {
       let active = reload(startSpin(session, rng, id, 'six'))
@@ -239,7 +270,7 @@ describe('round transitions and persistence', () => {
       for (let turn = 1; turn <= 3; turn++) {
         expect(lastWinSen(active)).toBe(0)
         expect(active.boardOrbs.filter(Boolean)).toEqual(Array(6).fill(calculateOrbPrize(
-          session.betting.denominationSen, session.betting.betSize, 2)))
+          session.betting.denominationSen, totalBetSen(session.betting), 2)))
         active = reload(revealRespin(startRespin(active, rng), id, turn))
       }
       return active
@@ -250,17 +281,19 @@ describe('round transitions and persistence', () => {
     expect(lastWinSen(bonus)).toBe(6 * 16 * 10)
     const changed = selectBetting(dismissResult(bonus, 'first-bonus'), { denominationSen: 20, betSize: 3, lines: 88 })
     expect(lastWinSen(changed)).toBe(lastWinSen(bonus))
-    expect(lastWinSen(completeHoldCollection(bonusAt(changed, 'second-bonus'), 'second-bonus:bonus'))).toBe(6 * 16 * 3 * 20)
+    expect(lastWinSen(completeHoldCollection(bonusAt(changed, 'second-bonus'), 'second-bonus:bonus'))).toBe(6 * 2 * 88 * 3 * 20)
   })
 
-  it('keeps orb and jackpot amounts independent of lines at spin time', () => {
+  it('prices ordinary orbs from the whole wager and keeps jackpots tied to denomination', () => {
     const initial = selectBetting(funded(), { denominationSen: 50, betSize: 5 })
     const narrow = begin('mini', initial)
     const wide = begin('mini', selectBetting(initial, { lines: 88 }))
     if (narrow.round.phase !== 'SPINNING' || wide.round.phase !== 'SPINNING') throw new Error('Expected pending spins')
     expect(narrow.round.spin.bet).not.toBe(wide.round.spin.bet)
-    expect(narrow.round.orbs).toEqual(wide.round.orbs)
+    expect(narrow.round.orbs[2]).toEqual({ multiplier: 2, value: 80, payoutSen: 4000 })
+    expect(wide.round.orbs[2]).toEqual({ multiplier: 2, value: 880, payoutSen: 44_000 })
     expect(narrow.round.orbs.filter(Boolean)).toContainEqual({ tier: 'mini', payoutSen: 250_000 })
+    expect(wide.round.orbs.filter(Boolean)).toContainEqual({ tier: 'mini', payoutSen: 250_000 })
   })
 
   it('preserves locked v4 Free Spin board payouts and defaults the new music control on migration', () => {
@@ -270,7 +303,7 @@ describe('round transitions and persistence', () => {
     const faceOnly = current.boardOrbs.map(orb => orb ? { value: 40 } : null)
     const migrated = parseSession(JSON.stringify({ ...current, version: 4, boardOrbs: faceOnly,
       settings: { ...current.settings, musicVolume: undefined },
-      freeSpins: { ...current.freeSpins, root, paidHold: faceOnly },
+      freeSpins: { ...current.freeSpins, root: { ...root, paytableVersion: 2 }, paidHold: faceOnly },
     }))!
     expect(migrated.settings.musicVolume).toBe(0.35)
     expect(reload(migrated).freeSpins?.paidHold?.filter(Boolean))

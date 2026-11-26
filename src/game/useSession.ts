@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadSession, parseSession, SAVE_KEY, saveSession } from './storage'
 import { newSession } from './session'
+import { stampGameplayRevision } from './roundIntent'
 import type { Session } from './session'
 
 export function useSession() {
@@ -24,7 +25,7 @@ export function useSession() {
           storageAvailable.current = false
         }
       }
-      const next = update(previous)
+      const next = stampGameplayRevision(previous, update(previous))
       if (next !== previous) {
         storageAvailable.current = saveSession(next)
         setSaveFailed(!storageAvailable.current)

@@ -6,6 +6,7 @@ export const LEGACY_LINE_COUNTS = [1, 5, 10, 20, 25] as const
 export type Betting = { denominationSen: number; betSize: number; lines: number }
 export const DEFAULT_BETTING: Betting = { denominationSen: 1, betSize: 1, lines: 8 }
 export const betPerLineSen = ({ denominationSen, betSize }: Betting) => denominationSen * betSize
+export const wagerCredits = ({ betSize, lines }: Betting) => betSize * lines
 export const totalBetSen = (betting: Betting) => betPerLineSen(betting) * betting.lines
 export const denominationLabel = (sen: number) => sen < 100 ? `${sen}¢` : `RM${sen / 100}`
 export const START_BALANCE = 100_000
@@ -58,6 +59,22 @@ export const SYMBOLS = {
   orb: LEGACY_SYMBOLS.orb,
   lantern: LEGACY_SYMBOLS.lantern,
 } as const
+export const CREDIT_PAYTABLE_VERSION = 3
+export const DESIGN_B_VERSION = 4
+export type PaytableVersion = 1 | 2 | typeof CREDIT_PAYTABLE_VERSION | typeof DESIGN_B_VERSION
+const standardLineCredits = { 3: 10, 4: 25, 5: 100 } as const
+export const CREDIT_V3_LINE_AWARDS = {
+  '9': standardLineCredits, '10': standardLineCredits, J: standardLineCredits, Q: standardLineCredits,
+  K: standardLineCredits, chicken: standardLineCredits, boat: standardLineCredits, lotus: standardLineCredits,
+  tiger: { 2: 4, 3: 30, 4: 75, 5: 300 },
+} satisfies Partial<Record<keyof typeof SYMBOLS, Readonly<Partial<Record<number, number>>>>>
+const rankCredits = { 3: 5, 4: 14, 5: 55 } as const
+const pictureCredits = { 3: 8, 4: 20, 5: 80 } as const
+export const LINE_CREDITS = {
+  '9': rankCredits, '10': rankCredits, J: rankCredits, Q: rankCredits, K: rankCredits,
+  chicken: pictureCredits, boat: pictureCredits, lotus: pictureCredits,
+  tiger: { 2: 3, 3: 22, 4: 55, 5: 200 },
+} satisfies Record<keyof typeof CREDIT_V3_LINE_AWARDS, Readonly<Partial<Record<number, number>>>>
 export const BOARD_SYMBOLS = { ...LEGACY_SYMBOLS, ...SYMBOLS }
 export type SymbolId = keyof typeof BOARD_SYMBOLS
 export const PAYLINES = [
@@ -96,6 +113,8 @@ export const CELEBRATIONS = [
 export const cellAt = (column: number, row: number) => column * ROWS + row
 const formatter = new Intl.NumberFormat('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export const money = (sen: number) => `${sen < 0 ? '−' : ''}RM ${formatter.format(Math.abs(sen) / 100)}`
+const creditFormatter = new Intl.NumberFormat('en-MY', { maximumFractionDigits: 3 })
+export const credits = (sen: number, denominationSen: number) => creditFormatter.format(sen / denominationSen)
 
 export function parseBankroll(input: string): number | null {
   const match = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?$/.exec(input.trim())

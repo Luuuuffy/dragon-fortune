@@ -3,41 +3,48 @@ import { LANTERN } from './lanternConfig'
 import { baseOrbChance, evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, legacyLinePayout,
   orbTypeProbabilities, respin, seededRandom, settleBonus, startingOrbs, triggersBonus } from './engine'
 import type { Slots } from './engine'
-import { CELLS, calculateJackpots } from './config'
-import type { SymbolId } from './config'
-import { calculateOrbPrize, orbMultiplierWeights } from './orbPrizes'
+import { CELLS, DESIGN_B_VERSION, calculateJackpots } from './config'
+import type { PaytableVersion, SymbolId } from './config'
+import { orbWeightsForWager, priceWagerOrb } from './orbPrizes'
 
-export function expectedHoldPayout(denominationSen: number, betSize: number, grandAddsToOrbs: boolean = BONUS.grandAddsToOrbs) {
+export function expectedHoldPayout(denominationSen: number, bet: number, legacy = false,
+  grandAddsToOrbs: boolean = BONUS.grandAddsToOrbs) {
   const paidEntry = lanternCountOdds(false).slice(3).reduce((sum, chance) => sum + chance, 0)
   const retrigger = lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0)
   const boardsPerPaidSpin = 1 + paidEntry * LANTERN.initialSpins / (1 - retrigger * LANTERN.extraSpins)
   const { full, orbs } = holdBoardMoments(CELLS, baseOrbChance)
   const paidOrbs = (orbs - (grandAddsToOrbs ? 0 : CELLS * full)) * boardsPerPaidSpin
   const prizes = calculateJackpots(denominationSen)
-  const multiplierWeight = orbMultiplierWeights.reduce((sum, [, weight]) => sum + weight, 0)
-  const ordinaryMean = orbMultiplierWeights.reduce((sum, [multiplier, weight]) =>
-    sum + calculateOrbPrize(denominationSen, betSize, multiplier).payoutSen * weight / multiplierWeight, 0)
+  const paytableVersion: PaytableVersion = legacy ? 2 : DESIGN_B_VERSION
+  const wager = { denominationSen, bet, paytableVersion, legacyBetSize: legacy ? 1 : undefined }
+  const weights = orbWeightsForWager(wager)
+  const multiplierWeight = weights.reduce((sum, [, weight]) => sum + weight, 0)
+  const ordinaryMean = weights.reduce((sum, [multiplier, weight]) =>
+    sum + priceWagerOrb(wager, multiplier).payoutSen * weight / multiplierWeight, 0)
   let ordinaryOrbs = 0
-  let jackpots = full * boardsPerPaidSpin * prizes.grand
-  for (const [type, chance] of orbTypeProbabilities) {
+  const jackpotPayouts = { mini: 0, minor: 0, major: 0, grand: full * boardsPerPaidSpin * prizes.grand }
+  for (const [type, chance] of orbTypeProbabilities(paytableVersion)) {
     if (type === 'ordinary') ordinaryOrbs = paidOrbs * chance * ordinaryMean
-    else jackpots += paidOrbs * chance * prizes[type]
+    else jackpotPayouts[type] = paidOrbs * chance * prizes[type]
   }
-  return { ordinaryOrbs, jackpots, grandAwards: full * boardsPerPaidSpin }
+  return { ordinaryOrbs, jackpots: Object.values(jackpotPayouts).reduce((sum, value) => sum + value, 0), jackpotPayouts,
+    grandAwards: full * boardsPerPaidSpin }
 }
 
-export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, lines, seed, legacy = false }: {
-  spins: number; denominationSen: number; betSize?: number; bet: number; perLine: number; lines: number; seed: number; legacy?: boolean
+export function simulate({ spins, denominationSen, bet, lines, seed, legacy = false }: {
+  spins: number; denominationSen: number; bet: number; lines: number; seed: number; legacy?: boolean
 }) {
   const rng = seededRandom(seed)
   const jackpotPrizes = calculateJackpots(denominationSen)
-  const wager = { denominationSen, betSize, jackpotPrizes }
+  const version: PaytableVersion = legacy ? 2 : DESIGN_B_VERSION
+  const wager = { denominationSen, bet, jackpotPrizes, paytableVersion: version, legacyBetSize: legacy ? 1 : undefined }
   const jackpotCounts = { grand: 0, major: 0, minor: 0, mini: 0 }
   const jackpotHits = { grand: 0, major: 0, minor: 0, mini: 0 }
   const lastJackpotSpin = { grand: -1, major: -1, minor: -1, mini: -1 }
   let won = 0
   let bonusWon = 0
-  const components = { line: 0, scatter: 0, freeLinesAndScatter: 0, ordinaryOrbs: 0, jackpots: 0 }
+  const components = { line: 0, scatter: 0, freeLine: 0, freeScatter: 0,
+    ordinaryOrbs: 0, mini: 0, minor: 0, major: 0, grand: 0 }
   let triggers = 0
   let holdTriggers = 0
   let holdFinalOrbs = 0
@@ -58,7 +65,7 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
   let freeZeroPayouts = 0
 
   const lineWin = (board: SymbolId[]) => {
-    const raw = evaluateLines(board, perLine, lines).amount
+    const raw = evaluateLines(board, legacy ? bet : bet / lines, lines, version).amount
     return legacy ? legacyLinePayout(raw, lines) : raw
   }
   function holdWin(held: Slots, paidSpin: number) {
@@ -81,8 +88,8 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
     const payout = result.bonus + result.jackpot
     bonusWon += payout
     components.ordinaryOrbs += result.bonus
-    components.jackpots += result.jackpot
-    for (const { tier } of result.awards) {
+    for (const { tier, amount } of result.awards) {
+      components[tier] += amount
       jackpotCounts[tier]++
       if (lastJackpotSpin[tier] === paidSpin) continue
       lastJackpotSpin[tier] = paidSpin
@@ -92,10 +99,10 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
   }
 
   for (let spin = 0; spin < spins; spin++) {
-    const board = generateBoard(rng)
+    const board = generateBoard(rng, undefined, false, version)
     const orbs = startingOrbs(board, rng, wager)
     const hold = triggersBonus(board)
-    const scatter = evaluateScatter(board, bet)
+    const scatter = evaluateScatter(board, bet, version)
     paidLanternCounts[Math.min(scatter.count, 5)]++
     const baseLine = lineWin(board)
     components.line += baseLine
@@ -109,14 +116,15 @@ export function simulate({ spins, denominationSen, betSize = 1, bet, perLine, li
       while (remaining > 0) {
         remaining--
         freePlayed++
-        const freeBoard = generateBoard(rng, undefined, true)
+        const freeBoard = generateBoard(rng, undefined, true, version)
         const freeOrbs = startingOrbs(freeBoard, rng, wager)
         freeGoldOrbs += freeOrbs.filter(Boolean).length
-        const freeScatter = evaluateScatter(freeBoard, bet)
+        const freeScatter = evaluateScatter(freeBoard, bet, version)
         freeLanternCounts[Math.min(freeScatter.count, 5)]++
         const freeLine = lineWin(freeBoard)
         if (freeLine > 0) freeLineHits++
-        components.freeLinesAndScatter += freeLine + freeScatter.amount
+        components.freeLine += freeLine
+        components.freeScatter += freeScatter.amount
         featureWin += freeLine + freeScatter.amount
         if (freeScatter.qualifies) {
           freeRetriggers++

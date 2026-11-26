@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { BOARD_SYMBOLS, money } from '../game/config'
 import type { SymbolId } from '../game/config'
 import type { Orb } from '../game/engine'
+import { orbFaceLabel } from '../game/orbPrizes'
 
 export function SymbolPaint() {
   return <svg className="paint" aria-hidden="true">
@@ -157,7 +158,7 @@ const shapes: Partial<Record<SymbolId, ReactNode>> = {
 export function OrbSymbol({ orb }: { orb?: Orb }) {
   const tier = orb && 'tier' in orb ? orb.tier : ''
   const amount = orb && 'tier' in orb ? money(orb.payoutSen) : ''
-  const value = orb && 'value' in orb ? String(orb.value) : ''
+  const value = orb && 'value' in orb ? orbFaceLabel(orb) : ''
   const label = tier ? `${tier.toUpperCase()} ${amount}`.trim() : value ? `Gold orb ${value}` : 'Gold orb'
   return <span className={`orb-symbol ${tier}`} role="img" aria-label={label}>
     <svg aria-hidden="true" viewBox="0 0 120 104">

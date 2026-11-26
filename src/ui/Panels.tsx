@@ -1,15 +1,16 @@
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
-import { BET_SIZES, DENOMINATIONS_SEN, JACKPOT_TIERS, LINE_OPTIONS, PAYLINES, SYMBOLS,
-  betPerLineSen, calculateJackpots, denominationLabel, money, totalBetSen } from '../game/config'
+import { BET_SIZES, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS,
+  LINE_CREDITS, LINE_OPTIONS, PAYLINES, SYMBOLS, betPerLineSen, calculateJackpots, denominationLabel, money, totalBetSen,
+  wagerCredits } from '../game/config'
 import { BONUS } from '../game/bonusConfig'
-import { calculateOrbPrize, orbMultiplierWeights } from '../game/orbPrizes'
+import { orbFaceLabel, orbWeightsForWager, priceWagerOrb } from '../game/orbPrizes'
 import { LANTERN } from '../game/lanternConfig'
-import type { SymbolId } from '../game/config'
-import { SCENARIOS } from '../game/engine'
+import type { Betting, JackpotPrizes, PaytableVersion, SymbolId } from '../game/config'
+import { SCENARIOS, orbTypeProbabilities } from '../game/engine'
 import type { Scenario } from '../game/engine'
-import { freeSpinsWin, resetGame, resetStats, selectBetting } from '../game/session'
+import { freeSpinsWin, resetGame, resetStats, selectBetting, spinJackpots } from '../game/session'
 import type { Session, Settings } from '../game/session'
 import { Symbol } from './Symbol'
 
@@ -59,41 +60,56 @@ export function Modal({ children, close, title, className = '' }: { children: Re
   </dialog>
 }
 
-function Paytable({ bet, perLine, denominationSen, betSize }: {
-  bet: number; perLine: number; denominationSen: number; betSize: number
-}) {
-  const prizes = calculateJackpots(denominationSen)
+const matchCounts = [2, 3, 4, 5] as const
+
+const percent = (chance: number) => `${(chance * 100).toLocaleString('en-MY', { maximumFractionDigits: 8 })}%`
+const designBRtp = '91.27–92.69%'
+
+function Paytable({ betting, version, prizes }: { betting: Betting; version: PaytableVersion; prizes: JackpotPrizes }) {
+  const { denominationSen, betSize } = betting
+  const bet = totalBetSen(betting)
+  const designB = version === DESIGN_B_VERSION
+  const lineScale = designB ? betSize : 1
+  const awardsTable = designB ? LINE_CREDITS : CREDIT_V3_LINE_AWARDS
+  const types = Object.fromEntries(orbTypeProbabilities(version))
+  const wager = { denominationSen, bet, paytableVersion: version }
+  const weights = orbWeightsForWager(wager)
+  const totalWeight = weights.reduce((sum, [, weight]) => sum + weight, 0)
   return <>
-    <p>Each winning line pays its multiplier times your bet per line of <strong>{money(perLine)}</strong>.</p>
+    <p>{designB ? <>Paid and free line wins multiply the base credit award by Bet Size. The table shows awards at
+      your current Bet Size of <strong>{betSize}</strong>.</> : 'This round uses the previous fixed-credit paytable.'}
+      {' '}One credit is worth <strong>{money(denominationSen)}</strong>.</p>
     <table className="paytable">
-      <thead><tr><th>Symbol</th><th>3 match</th><th>4 match</th><th>5 match</th></tr></thead>
-      <tbody>{Object.entries(SYMBOLS).map(([symbol, definition]) => definition.pays && <tr key={symbol}>
-        <th scope="row"><span><Symbol symbol={symbol as SymbolId}/>{definition.name}</span></th>
-        {definition.pays.map((pay, i) => <td key={i}>{pay}×</td>)}
+      <thead><tr><th>Symbol</th>{matchCounts.map(count => <th key={count}>{count} match</th>)}</tr></thead>
+      <tbody>{Object.entries(awardsTable).map(([symbol, awards]: [string, Partial<Record<number, number>>]) => <tr key={symbol}>
+        <th scope="row"><span><Symbol symbol={symbol as SymbolId}/>{SYMBOLS[symbol as keyof typeof LINE_CREDITS].name}</span></th>
+        {matchCounts.map(count => <td key={count}>{awards[count] ? awards[count] * lineScale : '—'}</td>)}
       </tr>)}</tbody>
     </table>
     <h3>Red Lantern Scatter</h3>
     <p>Each reel can show one Lantern. A paid trigger starts {LANTERN.initialSpins} automatic Free Spins.
-      A qualifying Free Spin awards {LANTERN.extraSpins} more.</p>
+      A qualifying Free Spin awards {LANTERN.extraSpins} more. Chicken, Boat, Lotus and Tiger are the paying symbols in Free Spins.</p>
     <ul className="orb-values">
-      <li><b>3 Lanterns</b> {money(bet * LANTERN.payouts[3])}</li>
-      <li><b>4 Lanterns</b> {money(bet * LANTERN.payouts[4])}</li>
-      <li><b>5 Lanterns</b> {money(bet * LANTERN.payouts[5])} (demo prize)</li>
+      {([3, 4, 5] as const).map(count => <li key={count}><b>{count} Lanterns</b> {LANTERN.payouts[count]}× total bet · {money(bet * LANTERN.payouts[count])}</li>)}
     </ul>
     <p>Paying symbols match from the first reel. On reels 2–5, one to three Panda Wilds can stack and substitute for standard paying symbols. Each active line pays its highest qualifying combination.</p>
     <h3>Hold & Spin prizes</h3>
-    <p>Six or more Gold Orbs start the feature. An ordinary orb shows base orb units × bet size × multiplier.
-      Its payout is that number times the triggering denomination.</p>
+    <p>Six or more Gold Orbs start the feature. A 1× orb pays the total bet for the triggering spin.
+      Orb faces show credits, or the MYR amount at the RM1 and RM2 denominations.</p>
+    {designB && <p>Higher Total Credits Wagered (Bet Size × Active Lines) makes larger ordinary multipliers more likely.
+      These are the chances per ordinary orb for the current <strong>{wagerCredits(betting)}-credit</strong> wager.</p>}
     <ul className="orb-values">
-      {orbMultiplierWeights.map(([multiplier]) => {
-        const orb = calculateOrbPrize(denominationSen, betSize, multiplier)
-        return <li key={multiplier}><b>{orb.value}</b> {money(orb.payoutSen)}</li>
+      {weights.map(([multiplier, weight]) => {
+        const orb = priceWagerOrb(wager, multiplier)
+        return <li key={multiplier}><b>{multiplier}×</b> {orbFaceLabel(orb)}{!orb.displayMyr && ' credits'}<br/>{percent(weight / totalWeight)}</li>
       })}
     </ul>
     <ul className="orb-values">
-      {JACKPOT_TIERS.map(tier => <li key={tier}><b>{tier.toUpperCase()}</b> {money(prizes[tier])}</li>)}
+      {JACKPOT_TIERS.map(tier => <li key={tier}><b>{tier.toUpperCase()}</b> {money(prizes[tier])}
+        <br/>{tier === 'grand' ? 'Full board' : `${percent(types[tier])} per qualifying orb`}</li>)}
     </ul>
     <p>MINI, MINOR and MAJOR orbs pay their named jackpot. Fill every position to win GRAND {BONUS.grandAddsToOrbs ? 'in addition to the visible orb prizes' : 'as the full feature payout'}. Any regular line wins from the triggering spin are included in the final result.</p>
+    {designB && <p>Theoretical return across supported wagers is <strong>{designBRtp}</strong> for this virtual game.</p>}
   </>
 }
 
@@ -115,6 +131,8 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
   const { betting, stats, settings, initialBankroll, freeSpins, round } = session
   const { denominationSen, betSize, lines } = betting
   const bet = totalBetSen(betting)
+  const spin = freeSpins?.root ?? ('spin' in round ? round.spin : 'bonus' in round ? round.bonus.spin : null)
+  const paytableSpin = spin?.paytableVersion && spin.paytableVersion >= CREDIT_PAYTABLE_VERSION && spin.betting ? spin : null
   const idle = session.round.phase === 'IDLE'
   function settingsChange(patch: Partial<Settings>) {
     void commit(previous => ({ ...previous, settings: { ...previous.settings, ...patch } }))
@@ -125,12 +143,12 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
   }
   return <Modal close={close} title={titles[panel]} className={panel === 'paylines' ? 'line-modal' : ''}>
     {panel === 'denomination' && <>
-      <p>Choose the value of one betting unit.</p>
+      <p>Choose how much one credit is worth.</p>
       <div className="choice-list">{DENOMINATIONS_SEN.map(value => <button aria-pressed={denominationSen === value} key={value} disabled={!idle}
         onClick={() => void choose(previous => selectBetting(previous, { denominationSen: value }))}>{denominationLabel(value)}</button>)}</div>
     </>}
     {panel === 'betSize' && <>
-      <p>Choose the number of {denominationLabel(denominationSen)} units wagered per active line.</p>
+      <p>Choose the number of credits wagered per active line.</p>
       <div className="choice-list">{BET_SIZES.map(value => <button aria-pressed={betSize === value} key={value} disabled={!idle}
         onClick={() => void choose(previous => selectBetting(previous, { betSize: value }))}>{value}</button>)}</div>
     </>}
@@ -149,7 +167,9 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
         </button>
       )}</div>
     </>}
-    {panel === 'paytable' && <Paytable bet={bet} perLine={betPerLineSen(betting)} denominationSen={denominationSen} betSize={betSize}/>}
+    {panel === 'paytable' && <Paytable betting={paytableSpin?.betting ?? betting}
+      version={paytableSpin?.paytableVersion ?? DESIGN_B_VERSION}
+      prizes={paytableSpin ? spinJackpots(paytableSpin) : calculateJackpots(denominationSen)}/>}
     {panel === 'settings' && <div className="settings-list">
       {([['volume', 'Master volume'], ['musicVolume', 'Background music volume'],
         ['reelVolume', 'Reel stop volume'], ['orbVolume', 'Gold orb volume'],
@@ -169,15 +189,19 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
     </div>}
     {panel === 'help' && <>
       <h3>Spin the reels</h3>
-      <p>Choose a denomination, bet size and line count. Your bet per line is denomination × bet size. Your total bet is the bet per line × active lines. Press Spin or Space to play. A line pays when three or more matching symbols run from the first reel along an active path. Panda Wilds can complete a match.</p>
+      <p>Choose a denomination, bet size and line count. One credit is worth the selected denomination. Your total bet is credits per line × active lines × denomination. Press Spin or Space to play. Matches count from the first reel along an active path. Tiger pays from two matches and other paying symbols from three. Panda Wilds can complete a match.</p>
+      <p>Paid spins and Free Spins multiply base line credits by Bet Size. Across all supported wagers, the theoretical return is {designBRtp}.</p>
       <h3>Hold & Spin</h3>
       <p>Land six or more Gold Orbs to start with three respins. Orbs stay in their original cells and only empty positions respin. Each newly filled cell resets the counter to three. The round ends at zero respins or a full board.</p>
+      <p>Total Credits Wagered is Bet Size × Active Lines. More credits increase the chance of a larger ordinary multiplier.
+        The same credit total uses the same multiplier odds at every denomination. The Paytable lists the active odds.</p>
       <h3>Lantern Free Spins</h3>
       <p>Land Red Lanterns on three or more reels in a paid spin for {LANTERN.initialSpins} automatic Free Spins.
-        Land three or more during a Free Spin for {LANTERN.extraSpins} extra spins. Hold &amp; Spin rounds triggered during Free Spins also play automatically.</p>
+        Land three or more during a Free Spin for {LANTERN.extraSpins} extra spins. Chicken, Boat, Lotus and Tiger are the paying symbols throughout the feature. Hold &amp; Spin rounds triggered during Free Spins also play automatically.</p>
       <h3>Jackpots</h3>
-      <p>MINI and MINOR scale with denomination. MAJOR is fixed at RM 50,000 and GRAND is fixed at RM 200,000.
-        A full Hold &amp; Spin board awards GRAND. All amounts are virtual Malaysian Ringgit.</p>
+      <p>MINI pays 5,000 credits and MINOR pays 20,000 credits at the triggering denomination.
+        MAJOR pays RM 50,000 and a full Hold &amp; Spin board adds GRAND of RM 200,000.
+        See the Paytable for jackpot odds. All amounts are virtual Malaysian Ringgit.</p>
       <div className="modal-actions"><button onClick={() => open('paytable')}>Symbol paytable & orb values</button><button onClick={() => open('paylines')}>All paylines</button></div>
     </>}
     {panel === 'stats' && <>

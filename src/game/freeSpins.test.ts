@@ -27,9 +27,9 @@ const hydrate = (session: Session) => {
 function reeled(session: Session, scenario?: Scenario) {
   const round = session.round
   if (round.phase !== 'SPINNING') throw new Error('Expected spinning reels')
-  const board = scenario ? generateBoard(noHits, scenario) : round.spin.board
+  const board = scenario ? generateBoard(noHits, scenario, Boolean(session.freeSpins)) : round.spin.board
   const current = scenario ? { ...session, round: { ...round, spin: { ...round.spin, board },
-    orbs: startingOrbs(board, noHits, { denominationSen: 10, betSize: 1, jackpotPrizes }, scenario) } } : session
+    orbs: startingOrbs(board, noHits, { denominationSen: 10, bet: wager, jackpotPrizes }, scenario) } } : session
   return revealSpin(current, round.spin.id)
 }
 
@@ -70,7 +70,7 @@ function finish(started: Session) {
 afterEach(() => vi.useRealTimers())
 
 describe('Red Lantern scatter', () => {
-  it.each([[2, 0], [3, 2], [4, 4], [5, LANTERN.payouts[5]], [9, LANTERN.payouts[5]]])(
+  it.each([[2, 0], [3, 2], [4, 5], [5, 25], [9, 25]])(
     'counts %i Lanterns anywhere and applies only one payout tier', (count, multiplier) => {
       const board = Array<SymbolId>(CELLS).fill('orb')
       // Fill column-major across multiple rows, independent of active lines.
@@ -81,7 +81,7 @@ describe('Red Lantern scatter', () => {
   )
 
   it('measures realistic paid and free frequencies with a subcritical retrigger rate', () => {
-    const sim = simulate({ spins: 100_000, denominationSen: 10, bet: 80, perLine: 10, lines: 8, seed: 2026 })
+    const sim = simulate({ spins: 100_000, denominationSen: 10, bet: 80, lines: 8, seed: 2026 })
     const modeled = lanternCountOdds(false).slice(3).reduce((sum, chance) => sum + chance, 0)
     const modeledRetrigger = lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0)
     expect(Math.abs(sim.lanternTriggers / sim.spins - modeled)).toBeLessThan(0.002)
@@ -165,6 +165,26 @@ describe('Red Lantern scatter', () => {
 })
 
 describe('automatic Free Spins', () => {
+  it.each([[3, 3_000], [4, 6_000]] as const)('locks profile %i across the triggering wager and free line payout', (version, payout) => {
+    vi.useFakeTimers()
+    const start = selectBetting(funded(), { denominationSen: 10, betSize: 3 })
+    const active = startSpin(start, noHits, rootId, 'lantern3')
+    if (active.round.phase !== 'SPINNING') throw new Error('Expected the paid spin')
+    const spin = { ...active.round.spin, paytableVersion: version }
+    const intro = hydrate(revealSpin({ ...active, round: { ...active.round, spin } }, rootId))
+    const rolling = tick(intro)
+    if (rolling.round.phase !== 'SPINNING') throw new Error('Expected a free spin')
+    expect(rolling.round.spin.paytableVersion).toBe(version)
+    expect(rolling.balance).toBe(START_BALANCE - 240)
+    const board = generateBoard(noHits, 'line', true, version)
+    const waiting = hydrate(revealSpin({ ...rolling, round: { ...rolling.round, spin: { ...rolling.round.spin, board } } },
+      rolling.round.spin.id))
+    expect(waiting.round).toMatchObject({ phase: 'FREE_WAIT', outcome: { line: payout } })
+    const { session } = finish(waiting)
+    expect(session.last?.freeSpins).toBe(payout)
+    expect(session.balance).toBe(START_BALANCE - 240 + session.last!.total)
+  })
+
   it.each(['lantern3', 'lantern4', 'lantern5'] as const)('runs six spins automatically for %s and then enables the cabinet', scenario => {
     vi.useFakeTimers()
     const intro = hydrate(launch(scenario))

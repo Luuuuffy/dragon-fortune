@@ -1,9 +1,9 @@
 import { LANTERN_PROBABILITY } from './probabilityConfig'
 
+export const LEGACY_LANTERN_PAYOUTS = { 3: 2, 4: 4, 5: 8 } as const
 export const LANTERN = {
   ...LANTERN_PROBABILITY,
-  // Five or more is an original demo placeholder.
-  payouts: { 3: 2, 4: 4, 5: 8 },
+  payouts: { 3: 2, 4: 5, 5: 25 },
   initialSpins: 6,
   extraSpins: 3,
   timing: {

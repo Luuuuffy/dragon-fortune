@@ -1,11 +1,12 @@
-import { BET_SIZES, DEFAULT_BETTING, DENOMINATIONS_SEN, JACKPOT_TIERS, LINE_OPTIONS, MAX_INITIAL_BANKROLL,
+import { BET_SIZES, CREDIT_PAYTABLE_VERSION, DEFAULT_BETTING, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS, LINE_OPTIONS, MAX_INITIAL_BANKROLL,
   BOARD_SYMBOLS, betPerLineSen, calculateJackpots, legacyJackpots, totalBetSen } from './config'
 import { BONUS } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
 import { evaluateLines, evaluateScatter, freeSpinScenario, generateBoard, legacyLinePayout, respin, sampleBoard, sampleOrbs,
   settleBonus, startingOrbs, triggersBonus } from './engine'
-import type { Betting, SymbolId, Jackpot, JackpotPrizes } from './config'
+import type { Betting, SymbolId, Jackpot, JackpotPrizes, PaytableVersion } from './config'
 import type { LineWin, Random, Result, Scenario, Slots } from './engine'
+import type { OrbWager } from './orbPrizes'
 
 export type Settings = { muted: boolean; volume: number; musicVolume: number; reelVolume: number; orbVolume: number;
   jackpotVolume: number; speed: number; reduced: boolean }
@@ -25,12 +26,14 @@ export type Stats = {
 }
 // A null betting snapshot identifies a pending round carried forward from version 1.
 type Spin = { id: string; bet: number; lines: number; betting: Betting | null;
-  jackpotPrizes?: JackpotPrizes; board: SymbolId[]; scenario?: Scenario; paytableVersion?: 2 }
+  jackpotPrizes?: JackpotPrizes; board: SymbolId[]; scenario?: Scenario; paytableVersion?: Exclude<PaytableVersion, 1> }
 export const spinJackpots = (spin: Pick<Spin, 'jackpotPrizes' | 'bet'>) =>
   spin.jackpotPrizes ?? legacyJackpots(spin.bet)
-const spinOrbWager = (spin: Spin) => ({
+const spinOrbWager = (spin: Spin): OrbWager => ({
   denominationSen: spin.betting?.denominationSen ?? 1,
-  betSize: spin.betting?.betSize ?? 1,
+  bet: spin.bet,
+  legacyBetSize: (spin.paytableVersion ?? 1) < CREDIT_PAYTABLE_VERSION ? spin.betting?.betSize ?? 1 : undefined,
+  paytableVersion: spin.paytableVersion ?? 1,
   jackpotPrizes: spinJackpots(spin),
 })
 type SpinOutcome = { line: number; lines: LineWin[]; scatter: number; lanterns: number }
@@ -64,6 +67,7 @@ export type Round =
 
 export type Session = {
   version: 5
+  gameplayRevision?: number
   balance: number
   initialBankroll: number | null
   betting: Betting
@@ -104,7 +108,7 @@ export const validBetting = (betting: Betting) =>
 export function selectBetting(session: Session, selection: Partial<Betting>): Session {
   const betting = { ...session.betting, ...selection }
   return session.round.phase === 'IDLE' && session.initialBankroll !== null && validBetting(betting)
-    ? { ...session, betting } : session
+    ? { ...session, betting, boardOrbs: session.last ? session.boardOrbs : sampleOrbs(session.board, betting) } : session
 }
 
 export function startSpin(session: Session, rng: Random, id: string, scenario?: Scenario): Session {
@@ -113,7 +117,7 @@ export function startSpin(session: Session, rng: Random, id: string, scenario?: 
   if (session.round.phase !== 'IDLE' || session.initialBankroll === null || balance < bet ||
       session.last?.spinId === id || scenario === 'insufficient') return session
   const board = generateBoard(rng, scenario)
-  const spin = { id, bet, lines: betting.lines, betting: { ...betting }, paytableVersion: 2 as const,
+  const spin: Spin = { id, bet, lines: betting.lines, betting: { ...betting }, paytableVersion: DESIGN_B_VERSION,
     jackpotPrizes: calculateJackpots(betting.denominationSen), board, scenario }
   const orbs = startingOrbs(board, rng, spinOrbWager(spin), scenario)
   return {
@@ -124,11 +128,13 @@ export function startSpin(session: Session, rng: Random, id: string, scenario?: 
 }
 
 function spinOutcome(spin: Spin): SpinOutcome {
-  const { wins, amount } = evaluateLines(spin.board, spin.betting ? betPerLineSen(spin.betting) : spin.bet, spin.lines,
-    spin.paytableVersion === undefined)
+  const version = spin.paytableVersion ?? 1
+  const unit = spin.betting ? version === CREDIT_PAYTABLE_VERSION ? spin.betting.denominationSen : betPerLineSen(spin.betting)
+    : spin.bet
+  const { wins, amount } = evaluateLines(spin.board, unit, spin.lines, version)
   // Only migrated rounds use the former rule of rounding the aggregate fractional line payout.
   const line = spin.betting ? amount : legacyLinePayout(amount, spin.lines)
-  const scatter = evaluateScatter(spin.board, spin.bet)
+  const scatter = evaluateScatter(spin.board, spin.bet, version)
   return { line, lines: wins, scatter: scatter.amount, lanterns: scatter.count }
 }
 
@@ -257,8 +263,9 @@ export function advanceFreeSpins(session: Session, phase: Round['phase'], id: st
   if (feature.remaining > 0) {
     const number = feature.awarded - feature.remaining + 1
     const scenario = freeSpinScenario(feature.root.scenario, number)
-    const board = generateBoard(rng, scenario, true)
-    const spin = { ...feature.root, id: `${feature.root.id}:free:${number}`, board, scenario, paytableVersion: 2 as const }
+    const paytableVersion = feature.root.paytableVersion ?? 2
+    const board = generateBoard(rng, scenario, true, paytableVersion)
+    const spin = { ...feature.root, id: `${feature.root.id}:free:${number}`, board, scenario, paytableVersion }
     return {
       ...session, stats: { ...session.stats, freePlayed: session.stats.freePlayed + 1 },
       freeSpins: { ...feature, remaining: feature.remaining - 1 },

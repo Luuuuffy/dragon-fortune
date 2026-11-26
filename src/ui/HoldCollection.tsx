@@ -61,9 +61,9 @@ function Dragon({ fill }: { fill: string }) {
 const colors = { mini: '#91ebbb', minor: '#a0deff', major: '#f4aaff', grand: '#ffe09a' } as const
 const keypoint = (point: Point) => `${point.x},${point.y}`
 
-export function HoldCollection({ field, orbs, result, complete, settings, reduced, queued, onComplete, onContinue }: {
+export function HoldCollection({ field, orbs, result, complete, settings, reduced, onComplete }: {
   field: RefObject<HTMLElement | null>; orbs: Slots; result: Result; complete: boolean; settings: Settings;
-  reduced: boolean; queued: boolean; onComplete: (id: string) => void; onContinue: () => void;
+  reduced: boolean; onComplete: (id: string) => void;
 }) {
   const [prizes] = useState(() => holdCollectionPrizes(orbs, result))
   const final = result.bonus + result.jackpot
@@ -165,8 +165,7 @@ export function HoldCollection({ field, orbs, result, complete, settings, reduce
     <div className={`reel-heading in-feature collection-heading ${complete ? 'collection-complete' : ''}`}>
       <span className="collection-title">{title}</span>
       <span className="collection-counter">BONUS WIN <strong ref={counter}>{money(display)}</strong></span>
-      {complete ? !queued && <button type="button" className="text-button collection-action" onClick={onContinue}>Continue</button>
-        : <button type="button" className="text-button collection-action" onClick={finish}>Skip</button>}
+      {!complete && <button type="button" className="text-button collection-action" onClick={finish}>Skip</button>}
     </div>
     {!complete && layout && <svg className="collection-flight" aria-hidden="true">
       {prizes.slice(0, frame.index).map(({ position }) => {

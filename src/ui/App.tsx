@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  BookOpen, ChevronDown, CircleHelp, Coins as CoinIcon, Grid3X3, Layers3, RotateCw,
+  BookOpen, ChevronDown, CircleHelp, Coins as CoinIcon, Grid3X3, Layers3,
   Settings as SettingsIcon, Volume2, VolumeX,
 } from 'lucide-react'
-import { JACKPOT_TIERS, calculateJackpots, denominationLabel, money, totalBetSen } from '../game/config'
+import { CREDIT_PAYTABLE_VERSION, JACKPOT_TIERS, calculateJackpots, credits, denominationLabel, money, totalBetSen } from '../game/config'
 import { SCENARIOS, secureRandom } from '../game/engine'
 import type { Scenario } from '../game/engine'
-import { completeHoldCollection, dismissResult, lastWinSen, spinJackpots, startRespin, startSpin } from '../game/session'
+import { completeHoldCollection, lastWinSen, spinJackpots } from '../game/session'
+import { applyRoundIntent, roundIntent, roundIntentKey } from '../game/roundIntent'
+import type { RoundIntent } from '../game/roundIntent'
 import { useSession } from '../game/useSession'
 import { play, unlockAudio } from './audio'
 import { createSpinId } from './spinId'
@@ -17,6 +19,7 @@ import { HoldCollection } from './HoldCollection'
 import { Panels } from './Panels'
 import type { PanelName } from './Panels'
 import { Reels } from './Reels'
+import { RoundButton } from './RoundButton'
 import { Symbol, SymbolPaint } from './Symbol'
 import { useRoundAnimation } from './useRoundAnimation'
 
@@ -39,19 +42,21 @@ export function App() {
   const bonus = 'bonus' in round ? round.bonus : null
   const holdResult = round.phase === 'FEATURE_HOLD_RESULT' ? round.holdResult : result
   const collectionComplete = 'collectionComplete' in round && Boolean(round.collectionComplete)
+  const continueId = lineWin?.spinId ?? (collectionComplete ? result?.spinId : undefined)
   const collectionOrbs = 'orbs' in round && holdResult ? round.orbs : null
   const outcome = 'outcome' in round ? round.outcome : null
   const activeSpin = freeSpins?.root ?? ('spin' in round ? round.spin : bonus?.spin) ?? result ?? lineWin
   const roundBet = activeSpin?.bet ?? bet
   const jackpotPrizes = activeSpin ? spinJackpots(activeSpin) : calculateJackpots(denominationSen)
   const simulatedLow = developer && scenario === 'insufficient'
+  const intent = panel || (simulatedLow && idle) ? null : roundIntent(session)
   const balance = simulatedLow ? 0 : session.balance - (result && !collectionComplete ? result.total : 0)
+  const lastWin = lastWinSen(session)
   const forcedRound = freeSpins?.root.scenario ?? ('spin' in round ? round.spin.scenario : bonus?.spin.scenario)
   const testScenario = forcedRound ?? scenario
 
   const open = (next: PanelName) => { setPreview(null); setPanel(next) }
   const close = () => { setPreview(null); setPanel(null) }
-  const dismiss = useCallback((id: string) => { void action(previous => dismissResult(previous, id)) }, [action])
   const finishCollection = useCallback((id: string) => {
     void commit(previous => completeHoldCollection(previous, id))
   }, [commit])
@@ -60,44 +65,29 @@ export function App() {
     void action(previous => ({ ...previous, settings: { ...previous.settings, muted: !previous.settings.muted } }))
   }
 
-  const spin = useCallback(async () => {
-    if (panel) return
+  const activate = useCallback(async (selected: RoundIntent) => {
     unlockAudio()
-    if (ready) {
-      if (await action(previous => startRespin(previous, secureRandom))) play('spin', settings)
-      return
-    }
-    if (lineWin) {
-      dismiss(lineWin.spinId)
-      return
-    }
-    if (needsBankroll || !idle || balance < bet) return
-    const forced = developer ? scenario : undefined
-    if (await action(previous => startSpin(previous, secureRandom, createSpinId(), forced))) {
-      setScenario(undefined)
+    if (await action(previous => applyRoundIntent(previous, selected, secureRandom, createSpinId, developer ? scenario : undefined))) {
+      if (selected.kind === 'continue') return
+      if (selected.kind === 'spin') setScenario(undefined)
       play('spin', settings)
     }
-  }, [action, balance, bet, developer, dismiss, idle, lineWin, needsBankroll, panel, ready, scenario, settings])
+  }, [action, developer, scenario, settings])
 
   useEffect(() => {
     const handle = (event: KeyboardEvent) => {
-      if (event.code !== 'Space' || event.altKey || event.ctrlKey || event.metaKey || needsBankroll || panel || result) return
+      if (event.code !== 'Space' || event.altKey || event.ctrlKey || event.metaKey || !intent) return
       if (event.target instanceof HTMLElement && event.target.closest('button, input, select, textarea, a, [contenteditable]')) return
       event.preventDefault()
-      if (!event.repeat) void spin()
+      if (!event.repeat) void activate(intent)
     }
     window.addEventListener('keydown', handle)
     return () => window.removeEventListener('keydown', handle)
-  }, [needsBankroll, panel, result, spin])
+  }, [activate, intent])
 
-  // Native keyboard activation can repeat on Enter when a button is held.
-  const suppressRepeat = (event: React.KeyboardEvent) => {
-    if (event.repeat && (event.key === 'Enter' || event.key === ' ')) event.preventDefault()
-  }
-  const canSpin = ready || Boolean(lineWin) || (!needsBankroll && idle && balance >= bet)
-  const buttonLabel = freeSpins ? 'Auto play' : lineWin ? 'Continue' : ready ? 'Respin' :
+  const buttonLabel = freeSpins ? 'Auto play' : continueId ? 'Continue' : ready ? 'Respin' :
     round.phase === 'SPINNING' || round.phase === 'BONUS_RESPIN' ? 'Spinning' :
-    holdResult ? collectionComplete ? 'Bonus complete' : 'Collecting' : 'Spin'
+    holdResult ? 'Collecting' : 'Spin'
   const status = lineWin ? `${winLabel(lineWin)} · ${lineWin.lines.length} winning ${lineWin.lines.length === 1 ? 'line' : 'lines'}`
     : round.phase === 'SPINNING' ? animation.anticipation ? 'Gold orbs in play' : 'Reels spinning'
     : needsBankroll ? 'Set your initial bankroll' : idle && balance < bet ? 'INSUFFICIENT BALANCE'
@@ -142,7 +132,7 @@ export function App() {
       <section ref={field} className="playfield" aria-label="Reels and status">
         {holdResult && collectionOrbs ? <HoldCollection key={holdResult.bonusId} field={field} orbs={collectionOrbs}
           result={holdResult} complete={collectionComplete} settings={settings} reduced={animation.reduced}
-          queued={Boolean(freeSpins)} onComplete={finishCollection} onContinue={() => dismiss(holdResult.spinId)}/>
+          onComplete={finishCollection}/>
         : <div className={`reel-heading ${bonus || freeSpins ? 'in-feature' : ''}`} aria-live="polite">
           {bonus ? <><span>HOLD &amp; SPIN</span><span className="respins">RESPINS REMAINING <b key={bonus.turn + ':' + round.phase}>{bonus.remaining}</b></span></>
             : freeSpins ? <FreeSpinsMeters feature={freeSpins} increase={round.phase === 'FREE_WAIT' && round.extra > 0}/>
@@ -157,16 +147,19 @@ export function App() {
             highlightLanterns={(outcome?.lanterns ?? 0) >= 3}
             wins={outcome?.lines ?? lineWin?.lines ?? []} spinId={round.phase === 'SPINNING' ? round.spin.id : ''}
             anticipation={animation.anticipation} reducedReels={animation.reducedReels}
-            compactReels={animation.compactReels} onReelStop={animation.onReelStop}/>
+            compactReels={animation.compactReels} onReelStop={animation.onReelStop}
+            freeSymbols={(freeSpins?.root.paytableVersion ?? 1) >= CREDIT_PAYTABLE_VERSION}/>
           {round.phase === 'BONUS_TRIGGER' && <div className="bonus-trigger" role="status"><strong>Bonus Triggered</strong><span>HOLD &amp; SPIN</span></div>}
           {freeSpins && <FreeSpinsDisplay feature={freeSpins} round={round} reduced={animation.reduced}/>}
           {lineWin && !animation.reduced && <Coins count={12}/>}
         </div>
-        {holdResult && collectionComplete && <div className="line-result"><ResultBreakdown result={holdResult} showTotal={false}/></div>}
+        {holdResult && collectionComplete && <div className="line-result"><ResultBreakdown result={holdResult}
+          denominationSen={denominationSen} showTotal={false}/></div>}
       </section>
 
       <section className="console" aria-label="Game controls">
-        <div className="meter balance"><span><CoinIcon size={13}/> Balance</span><strong>{money(balance)}</strong></div>
+        <div className="meter balance"><span><CoinIcon size={13}/> Balance</span><strong>{money(balance)}</strong>
+          <small>{credits(balance, denominationSen)} credits</small></div>
         <button className="bankroll-reset" disabled={!idle || needsBankroll} onClick={() => open('bankrollReset')}>
           Reset bankroll
         </button>
@@ -181,13 +174,14 @@ export function App() {
         <button className="meter picker lines-picker" disabled={!idle || needsBankroll} onClick={() => open('lines')} aria-label={`Active lines ${lines}`}>
           <span>Active lines <ChevronDown size={13}/></span><strong><Layers3 size={16}/> {lines}</strong>
         </button>
-        <div className="meter total-bet" aria-live="polite"><span>Total bet</span><strong>{money(roundBet)}</strong></div>
-        <div className="meter last-win"><span>Last win</span><strong>{money(lastWinSen(session))}</strong></div>
-        <button className="spin-button" disabled={!canSpin} onClick={() => void spin()} onKeyDown={suppressRepeat}>
-          <RotateCw size={21} aria-hidden="true"/>{buttonLabel}
-        </button>
+        <div className="meter total-bet" aria-live="polite"><span>Total bet</span><strong>{money(roundBet)}</strong>
+          <small>{credits(roundBet, denominationSen)} credits</small></div>
+        <div className="meter last-win"><span>Last win</span><strong>{money(lastWin)}</strong>
+          <small>{credits(lastWin, denominationSen)} credits</small></div>
+        <RoundButton key={roundIntentKey(intent)} intent={intent} label={buttonLabel} onActivate={activate}/>
       </section>
-      {lineWin && <div className="line-result" aria-live="polite"><ResultBreakdown result={lineWin} showTotal={false}/></div>}
+      {lineWin && <div className="line-result" aria-live="polite"><ResultBreakdown result={lineWin}
+        denominationSen={denominationSen} showTotal={false}/></div>}
       <footer className="game-footer">
         <span>Virtual Malaysian Ringgit (MYR)</span>
         <span className="keyboard"><kbd>Space</kbd> to spin</span>

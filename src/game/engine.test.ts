@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { BET_SIZES, CELLS, DENOMINATIONS_SEN, LINE_OPTIONS, PAYLINES, REELS, ROWS, SYMBOLS,
+import { BET_SIZES, CELLS, DENOMINATIONS_SEN, LINE_OPTIONS, PAYLINES, REELS, ROWS,
   betPerLineSen, calculateJackpots, cellAt, money, totalBetSen } from './config'
 import { BONUS, bonusEntryChance, grandBoardChance, holdBoardMoments, respinLandingChance } from './bonusConfig'
-import { calculateOrbPrize, configureOrbMultipliers, orbMultiplierWeights } from './orbPrizes'
-import { REGULAR_SYMBOL_ORDER } from './probabilityConfig'
+import { calculateOrbPrize, configureOrbMultipliers, orbFaceLabel, orbWeightsForWager } from './orbPrizes'
+import { FREE_SYMBOL_ORDER, REGULAR_SYMBOL_ORDER } from './probabilityConfig'
 import type { SymbolId } from './config'
 import { baseOrbChance, drawOrb, evaluateLines, generateBoard, respin, seededRandom,
   settleBonus, startingOrbs, triggersBonus } from './engine'
@@ -21,6 +21,15 @@ describe('bets, paylines and jackpot scaling', () => {
           const betting = { denominationSen, betSize, lines }
           expect(betPerLineSen(betting)).toBe(denominationSen * betSize)
           expect(totalBetSen(betting)).toBe(denominationSen * betSize * lines)
+          const bet = totalBetSen(betting)
+          const weights = orbWeightsForWager({ denominationSen, bet })
+          expect(weights.map(([multiplier]) => multiplier)).toEqual([1, 2, 3, 5, 10, 20, 50, 100, 200])
+          expect(weights.reduce((sum, [, weight]) => sum + weight, 0)).toBeCloseTo(100, 10)
+          expect(weights.every(([multiplier, weight]) => weight > 0 &&
+            calculateOrbPrize(denominationSen, bet, multiplier).payoutSen === bet * multiplier)).toBe(true)
+          expect(weights).toBe(orbWeightsForWager({ denominationSen: 1, bet: betSize * lines }))
+          expect(evaluateLines(Array<SymbolId>(CELLS).fill('tiger'), betPerLineSen(betting), lines).amount)
+            .toBe(200 * bet)
           expect(calculateJackpots(denominationSen)).toEqual({
             mini: denominationSen * 5000, minor: denominationSen * 20000, major: 5_000_000, grand: 20_000_000,
           })
@@ -44,7 +53,7 @@ describe('bets, paylines and jackpot scaling', () => {
     for (const lines of LINE_OPTIONS) {
       const result = evaluateLines(board, 60, lines)
       expect(result.wins.map(win => win.line)).toEqual(Array.from({ length: lines }, (_, line) => line))
-      expect(result.amount).toBe(lines * 60 * 22)
+      expect(result.amount).toBe(lines * 60 * 55)
     }
     const path88 = Array<SymbolId>(CELLS).fill('orb')
     PAYLINES[87].forEach((row, reel) => { path88[cellAt(reel, row)] = 'boat' })
@@ -57,15 +66,16 @@ describe('bets, paylines and jackpot scaling', () => {
     for (let reel = 0; reel < 5; reel++) board[cellAt(reel, 1)] = reel === 1 || reel === 2 ? 'wild' : 'tiger'
     expect(evaluateLines(board, 80, 1)).toMatchObject({ amount: 16_000, wins: [{ line: 0, symbol: 'tiger', multiplier: 200 }] })
     board[cellAt(3, 1)] = 'orb'
-    expect(evaluateLines(board, 80, 1)).toMatchObject({ amount: 800, wins: [{ symbol: 'tiger', multiplier: 10 }] })
+    expect(evaluateLines(board, 80, 1)).toMatchObject({ amount: 1_760, wins: [{ symbol: 'tiger', multiplier: 22 }] })
     for (const first of ['wild', 'lantern', 'orb'] as const) {
       board[cellAt(0, 1)] = first
       expect(evaluateLines(board, 80, 1).amount).toBe(0)
     }
   })
 
-  it.each([false, true])('lands standard symbols equally often per reel (Free Spins: %s)', free => {
+  it.each([false, true])('lands regular symbols at the approved weights per reel (Free Spins: %s)', free => {
     const rng = seededRandom(2026)
+    const pool = new Set<SymbolId>(free ? FREE_SYMBOL_ORDER : REGULAR_SYMBOL_ORDER)
     const counts = Array.from({ length: REELS }, () => new Map<SymbolId, number>(
       REGULAR_SYMBOL_ORDER.map(symbol => [symbol, 0]),
     ))
@@ -78,24 +88,40 @@ describe('bets, paylines and jackpot scaling', () => {
     }
     for (const reel of counts) {
       const total = [...reel.values()].reduce((sum, count) => sum + count, 0)
-      for (const count of reel.values()) {
-        expect(Math.abs(count / total - 1 / REGULAR_SYMBOL_ORDER.length)).toBeLessThan(0.01)
+      for (const [symbol, count] of reel) {
+        if (pool.has(symbol)) {
+          const expected = free ? (symbol === 'tiger' ? 0.8 : 1) / 3.8 : 1 / pool.size
+          expect(Math.abs(count / total - expected)).toBeLessThan(0.012)
+        }
+        else expect(count).toBe(0)
       }
     }
   })
 
-  it('uses the new paytable hierarchy and keeps older payouts available to committed spins', () => {
-    const ranks = ['9', '10', 'J', 'Q', 'K', 'chicken', 'boat', 'lotus', 'tiger'] as const
-    expect(Object.keys(SYMBOLS).filter(symbol => SYMBOLS[symbol as keyof typeof SYMBOLS].pays).sort()).toEqual([...ranks].sort())
-    ranks.slice(1).forEach((rank, index) => expect(SYMBOLS[rank].pays[2]).toBeGreaterThan(SYMBOLS[ranks[index]].pays[2]))
-    expect(evaluateLines(Array<SymbolId>(CELLS).fill('J'), 1, 1, true).amount).toBe(35)
+  it('pays the requested credits for each consecutive match and keeps older paytables for committed spins', () => {
+    for (const symbol of REGULAR_SYMBOL_ORDER) {
+      const awards = symbol === 'tiger' ? [3, 22, 55, 200]
+        : symbol === 'boat' || symbol === 'chicken' || symbol === 'lotus' ? [0, 8, 20, 80] : [0, 5, 14, 55]
+      for (const [i, award] of awards.entries()) {
+        const board = Array<SymbolId>(CELLS).fill('orb')
+        const count = i + 2
+        for (let reel = 0; reel < count; reel++) board[cellAt(reel, 1)] = symbol
+        const result = evaluateLines(board, 20, 1)
+        expect(result.amount).toBe(award * 20)
+        if (award) expect(result.wins[0].positions).toHaveLength(count)
+      }
+    }
+    const board = Array<SymbolId>(CELLS).fill('J')
+    expect(evaluateLines(board, 1, 1, 1).amount).toBe(35)
+    expect(evaluateLines(board, 1, 1, 2).amount).toBe(22)
+    expect(evaluateLines(board, 1, 1, 3).amount).toBe(100)
   })
 })
 
 describe('Hold & Spin', () => {
   const rng = () => 0.5
   const jackpotPrizes = calculateJackpots(10)
-  const wager = { denominationSen: 10, betSize: 1, jackpotPrizes }
+  const wager = { denominationSen: 10, bet: 80, jackpotPrizes }
 
   it('triggers at six and preserves all triggering positions', () => {
     const six = generateBoard(rng, 'six')
@@ -108,12 +134,12 @@ describe('Hold & Spin', () => {
     }
     six[six.indexOf('orb')] = 'J'
     expect(triggersBonus(six)).toBe(false)
-    expect(startingOrbs(six, () => 0, wager).filter(Boolean)).toEqual(Array(5).fill(calculateOrbPrize(10, 1, 1)))
+    expect(startingOrbs(six, () => 0, wager).filter(Boolean)).toEqual(Array(5).fill(calculateOrbPrize(10, 80, 1)))
   })
 
   it('resets on any new orb and decrements on misses, ending at zero', () => {
     const orbs = Array<null>(CELLS).fill(null) as Slots
-    orbs[0] = calculateOrbPrize(10, 1, 10)
+    orbs[0] = calculateOrbPrize(10, 80, 10)
     const first = respin(orbs, 2, () => 0.99, wager)
     expect(first).toMatchObject({ remaining: 1, landed: 0, done: false })
     expect(respin(first.orbs, 1, () => 0.99, wager).done).toBe(true)
@@ -121,7 +147,7 @@ describe('Hold & Spin', () => {
     const hit = respin(orbs, 1, () => draws.shift() ?? 0.99, wager)
     expect(hit).toMatchObject({ remaining: BONUS.respins, landed: 1, done: false })
     expect(hit.orbs[0]).toBe(orbs[0])
-    expect(hit.orbs[1]).toEqual(calculateOrbPrize(10, 1, 10))
+    expect(hit.orbs[1]).toEqual(calculateOrbPrize(10, 80, 10))
   })
 
   it('normalizes jackpot types in one draw, with no GRAND orb', () => {
@@ -130,29 +156,33 @@ describe('Hold & Spin', () => {
       const orb = drawOrb(() => (sample + 0.5) / 100_000, true, wager)
       counts['tier' in orb ? orb.tier : 'ordinary']++
     }
-    expect(counts).toEqual({ ordinary: 99_830, mini: 150, minor: 20, major: 0 })
+    expect(counts).toEqual({ ordinary: 99_868, mini: 120, minor: 12, major: 0 })
     const random = vi.fn(() => 0.99999999)
     expect(drawOrb(random, true, wager)).toEqual({ tier: 'major', payoutSen: 5_000_000 })
     expect(random).toHaveBeenCalledTimes(1)
   })
 
-  it.each([[10, 1, 1, 8, 80], [50, 1, 1, 8, 400], [100, 1, 5, 40, 4000], [200, 3, 5, 120, 24000]])(
-    'prices denomination %i, size %i and multiplier %i exactly', (denomination, size, multiplier, value, payoutSen) => {
-      expect(calculateOrbPrize(denomination, size, multiplier)).toEqual({ multiplier, value, payoutSen })
+  it.each([[1, 100, 1, 100, 100, '100'], [50, 900, 3, 54, 2700, '54'],
+    [100, 800, 1, 8, 800, 'RM8'], [200, 1600, 5, 40, 8000, 'RM80']] as const)(
+    'prices denomination %i, total wager %i sen and multiplier %i exactly', (denomination, bet, multiplier, value, payoutSen, face) => {
+      const orb = calculateOrbPrize(denomination, bet, multiplier)
+      expect(orb).toMatchObject({ multiplier, value, payoutSen })
+      expect(orbFaceLabel(orb)).toBe(face)
     },
   )
 
-  it('accepts configurable limits and base units and rejects unsafe or invalid orb configurations', () => {
-    expect(calculateOrbPrize(50, 1, 5, 12)).toEqual({ multiplier: 5, value: 60, payoutSen: 3000 })
+  it('accepts configurable multiplier limits and rejects unsafe or invalid orb configurations', () => {
     expect(configureOrbMultipliers([[1, 5], [350, 1]], 400)).toEqual([[1, 5], [350, 1]])
     expect(configureOrbMultipliers([[1, 5], [350, 1]], 200)).toEqual([[1, 5]])
     expect(() => configureOrbMultipliers([[1, 1], [-2, 1]], 200)).toThrow(RangeError)
     expect(() => configureOrbMultipliers([[1, -1]], 200)).toThrow(RangeError)
-    expect(() => calculateOrbPrize(200, 10, Number.MAX_SAFE_INTEGER)).toThrow(RangeError)
-    expect(() => calculateOrbPrize(200, 10, -1)).toThrow(RangeError)
+    expect(() => calculateOrbPrize(200, 1600, Number.MAX_SAFE_INTEGER)).toThrow(RangeError)
+    expect(() => calculateOrbPrize(200, 1600, -1)).toThrow(RangeError)
+    expect(() => calculateOrbPrize(50, 81, 1)).toThrow(RangeError)
   })
 
   it('normalizes the configured relative orb weights and favors smaller values', () => {
+    const orbMultiplierWeights = orbWeightsForWager(wager)
     const totalWeight = orbMultiplierWeights.reduce((sum, [, weight]) => sum + weight, 0)
     const sampleSize = 10_000
     const counts = new Map<number, number>()
@@ -168,9 +198,22 @@ describe('Hold & Spin', () => {
     expect(drawOrb(() => 0.99999999, false, wager)).toMatchObject({ multiplier: BONUS.maxOrbMultiplier })
   })
 
+  it('applies the published ordinary schedules at the lightest, reference and heaviest wagers', () => {
+    for (const [credits, expected] of [[8, 1.4959989], [440, 2.5647058], [880, 2.5746687]]) {
+      const distribution = orbWeightsForWager({ denominationSen: 10, bet: 10 * credits })
+      expect(distribution.reduce((sum, [multiplier, weight]) => sum + multiplier * weight / 100, 0)).toBeCloseTo(expected, 8)
+      let cumulative = 0
+      for (const [multiplier, weight] of distribution) {
+        const rng = () => (cumulative + weight / 2) / 100
+        expect(drawOrb(rng, false, { ...wager, bet: 10 * credits })).toMatchObject({ multiplier, payoutSen: 10 * credits * multiplier })
+        cumulative += weight
+      }
+    }
+  })
+
   it.each([[6, 0.072], [7, 0.072], [8, 0.02], [9, 0.02], [10, 0.01], [11, 0.01], [12, 0.003], [14, 0.003]])(
     'uses one %i-orb landing tier for the entire respin at chance %f', (count, chance) => {
-      const prize = calculateOrbPrize(10, 1, 2)
+      const prize = calculateOrbPrize(10, 80, 2)
       const held = Array.from({ length: CELLS }, (_, index) => index < count ? prize : null)
       const miss = vi.fn(() => chance)
       expect(respinLandingChance(count)).toBe(chance)
@@ -188,13 +231,16 @@ describe('Hold & Spin', () => {
     expect(board.full).toBeLessThan(0.000000002)
   })
 
-  it('measures a seeded simulation near the target without changing the six-orb rule', () => {
-    const result = simulate({ spins: 100_000, denominationSen: 10, bet: 80, perLine: 10, lines: 8, seed: 2026 })
+  it('accounts for new payouts in a seeded simulation while keeping the six-orb rule', () => {
+    const result = simulate({ spins: 100_000, denominationSen: 10, bet: 80, lines: 8, seed: 2026 })
     expect(Object.values(result.components).reduce((sum, value) => sum + value, 0)).toBe(result.won)
-    const { line, scatter, freeLinesAndScatter } = result.components
-    const hold = expectedHoldPayout(10, 1)
-    const modeledRtp = ((line + scatter + freeLinesAndScatter) / result.spins + hold.ordinaryOrbs + hold.jackpots) / 80
-    expect(Math.abs(modeledRtp - 0.92)).toBeLessThan(0.025)
+    const { line, scatter, freeLine, freeScatter } = result.components
+    const hold = expectedHoldPayout(10, 80)
+    const modeledRtp = ((line + scatter + freeLine + freeScatter) / result.spins + hold.ordinaryOrbs + hold.jackpots) / 80
+    expect(hold.ordinaryOrbs / 80).toBeCloseTo(0.27449, 4)
+    expect(Math.abs(modeledRtp - 0.914)).toBeLessThan(0.025)
+    expect(hold.jackpotPayouts.major).toBeGreaterThan(0)
+    expect(hold.jackpotPayouts.grand).toBeGreaterThan(0)
     expect(result.lineHits).toBeGreaterThan(0)
     expect(result.freeZeroPayouts / result.lanternTriggers).toBeLessThan(0.15)
     expect(hold.grandAwards).toBeGreaterThan(0)
@@ -213,8 +259,8 @@ describe('Hold & Spin', () => {
     vi.stubGlobal('localStorage', storage)
     try {
       const options = { spins: 10_000, lines: 8, seed: 71 }
-      const low = simulate({ ...options, denominationSen: 1, betSize: 1, bet: 8, perLine: 1 })
-      const high = simulate({ ...options, denominationSen: 50, betSize: 5, bet: 2000, perLine: 250 })
+      const low = simulate({ ...options, denominationSen: 1, bet: 8 })
+      const high = simulate({ ...options, denominationSen: 50, bet: 2000 })
       expect(low.triggers).toBe(high.triggers)
       expect(low.lanternTriggers).toBe(high.lanternTriggers)
       expect(low.jackpotHits).toEqual(high.jackpotHits)
@@ -229,7 +275,7 @@ describe('Hold & Spin', () => {
   it('includes standard and special prizes exactly once, plus GRAND on a full board', () => {
     const orbs: Slots = [
       ...(['mini', 'minor', 'major'] as const).map(tier => ({ tier, payoutSen: jackpotPrizes[tier] })),
-      ...Array.from({ length: 12 }, () => calculateOrbPrize(10, 1, 5)),
+      ...Array.from({ length: 12 }, () => calculateOrbPrize(10, 80, 5)),
     ]
     const result = settleBonus(orbs, jackpotPrizes)
     expect(result.bonus).toBe(4800)

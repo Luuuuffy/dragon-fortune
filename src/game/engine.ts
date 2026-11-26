@@ -1,12 +1,14 @@
 import {
-  CELLS, DEFAULT_BETTING, JACKPOT_TIERS, LEGACY_SYMBOLS, PAYLINES, REELS, ROWS, SYMBOLS, cellAt,
+  CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS, DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_SYMBOLS, LINE_CREDITS,
+  PAYLINES, REELS, ROWS, SYMBOLS, cellAt, totalBetSen,
 } from './config'
 import { BONUS, binomial, respinLandingChance } from './bonusConfig'
-import { LANTERN } from './lanternConfig'
-import { NON_ORB_WEIGHT, REEL_SYMBOL_WEIGHTS, REEL_WILD_ALLOWED, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS } from './probabilityConfig'
-import { calculateOrbPrize, orbMultiplierWeights } from './orbPrizes'
+import { LANTERN, LEGACY_LANTERN_PAYOUTS } from './lanternConfig'
+import { CREDIT_V3_FREE_WEIGHTS, CREDIT_V3_WILD_WEIGHTS, DESIGN_B_ORB_TYPES, NON_ORB_WEIGHT,
+  REEL_SYMBOL_WEIGHTS, REEL_WILD_ALLOWED, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS } from './probabilityConfig'
+import { calculateOrbPrize, ordinaryOrbDistributions, orbMultiplierWeights, orbWeightsForWager, priceWagerOrb } from './orbPrizes'
 import type { Orb, OrbWager } from './orbPrizes'
-import type { Jackpot, JackpotPrizes, SymbolId } from './config'
+import type { Jackpot, JackpotPrizes, PaytableVersion, SymbolId } from './config'
 
 export type Random = () => number
 export type { Orb } from './orbPrizes'
@@ -174,6 +176,9 @@ export function lanternReels(lanternWeight: number, tierWeights: readonly [numbe
 }
 const paidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights)
 const freeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, WILD_STACK_WEIGHTS.free, REEL_SYMBOL_WEIGHTS.free)
+const previousPaidReels = lanternReels(LANTERN.paidWeight, LANTERN.paidTierWeights, CREDIT_V3_WILD_WEIGHTS.paid)
+const creditV3FreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, CREDIT_V3_WILD_WEIGHTS.free, CREDIT_V3_FREE_WEIGHTS)
+const legacyFreeReels = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights, CREDIT_V3_WILD_WEIGHTS.free)
 export const lanternCountOdds = (free: boolean) => (free ? freeReels : paidReels).odds
 if (lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0) * LANTERN.extraSpins >= 1) {
   throw new Error('Free Spin Lantern weight must keep expected retrigger awards below one per spin.')
@@ -182,18 +187,24 @@ const freeExtraOrbChance: number = BONUS.freeExtraOrbChance
 if (!Number.isFinite(freeExtraOrbChance) || freeExtraOrbChance < 0 || freeExtraOrbChance > 1) {
   throw new RangeError('The extra Free Spin orb chance must be between zero and one.')
 }
-const drawOrbMultiplier = weighted(orbMultiplierWeights)
+const multiplierDraws = new Map([orbMultiplierWeights, ...ordinaryOrbDistributions].map(weights => [weights, weighted(weights)]))
 const paylinePositions = PAYLINES.map(rows => rows.map((row, reel) => cellAt(reel, row)))
 const demoMultiplier = orbMultiplierWeights[1]?.[0] ?? orbMultiplierWeights[0][0]
-const types = (['ordinary', 'mini', 'minor', 'major'] as const).map(type => [type, BONUS.orbTypeWeights[type]] as const)
-const totalTypeWeight = types.reduce((sum, [, weight]) => sum + weight, 0)
-if (types.some(([, weight]) => !Number.isFinite(weight) || weight < 0) ||
-    !Number.isFinite(totalTypeWeight) || totalTypeWeight <= 0) {
-  throw new RangeError('Configure nonnegative orb-type weights with a positive total.')
+const orbTypes = ['ordinary', 'mini', 'minor', 'major'] as const
+function orbTypeTable(weights: Readonly<Record<typeof orbTypes[number], number>>) {
+  const types = orbTypes.map(type => [type, weights[type]] as const)
+  const total = types.reduce((sum, [, weight]) => sum + weight, 0)
+  if (types.some(([, weight]) => !Number.isFinite(weight) || weight < 0) || !Number.isFinite(total) || total <= 0) {
+    throw new RangeError('Configure nonnegative orb-type weights with a positive total.')
+  }
+  return { draw: weighted(types.filter(([, weight]) => weight > 0)),
+    probabilities: types.map(([type, weight]) => [type, weight / total] as const) }
 }
-const drawOrbType = weighted(types.filter(([, weight]) => weight > 0))
-
-export const orbTypeProbabilities = types.map(([type, weight]) => [type, weight / totalTypeWeight] as const)
+const designBOrbTypes = orbTypeTable(DESIGN_B_ORB_TYPES)
+const previousOrbTypes = orbTypeTable(BONUS.orbTypeWeights)
+const orbTypesForVersion = (version: PaytableVersion = DESIGN_B_VERSION) =>
+  version === DESIGN_B_VERSION ? designBOrbTypes : previousOrbTypes
+export const orbTypeProbabilities = (version?: PaytableVersion) => orbTypesForVersion(version).probabilities
 
 export const sampleBoard = (): SymbolId[] => [
   'tiger', 'K', 'boat', '9', 'lotus', 'chicken', 'lotus', 'wild', 'Q',
@@ -203,12 +214,14 @@ export const sampleBoard = (): SymbolId[] => [
 // The showroom board and old saves without stored face values use a fixed sample.
 export const sampleOrbs = (board: SymbolId[], betting = DEFAULT_BETTING): Slots =>
   board.map(symbol => symbol === 'orb' ? calculateOrbPrize(betting.denominationSen,
-    betting.betSize, orbMultiplierWeights[0][0]) : null)
+    totalBetSen(betting), orbMultiplierWeights[0][0]) : null)
 
-export function generateBoard(rng: Random, scenario?: Scenario, free = false): SymbolId[] {
+export function generateBoard(rng: Random, scenario?: Scenario, free = false, version: PaytableVersion = DESIGN_B_VERSION): SymbolId[] {
+  const freeSymbols = free && version >= CREDIT_PAYTABLE_VERSION
   if (!scenario) {
-    if (!free) return paidReels.drawBoard(rng)
-    const board = freeReels.drawBoard(rng)
+    if (!free) return (version === DESIGN_B_VERSION ? paidReels : previousPaidReels).drawBoard(rng)
+    const reels = version === DESIGN_B_VERSION ? freeReels : freeSymbols ? creditV3FreeReels : legacyFreeReels
+    const board = reels.drawBoard(rng)
     // Add at most one orb while preserving every Hold & Spin trigger and its starting orb count.
     const orbCount = board.filter(symbol => symbol === 'orb').length
     if (orbCount < BONUS.triggerCount - 1 && freeExtraOrbChance > 0 && rng() < freeExtraOrbChance) {
@@ -218,8 +231,9 @@ export function generateBoard(rng: Random, scenario?: Scenario, free = false): S
     }
     return board
   }
-  const board: SymbolId[] = ['Q', '9', 'K', 'J', '10', 'lotus', 'boat', 'chicken', 'tiger',
-    '9', 'K', 'tiger', 'lotus', 'Q', 'J']
+  const board: SymbolId[] = freeSymbols
+    ? ['chicken', 'lotus', 'chicken', 'boat', 'tiger', 'boat', 'lotus', 'chicken', 'lotus', 'boat', 'tiger', 'boat', 'chicken', 'lotus', 'chicken']
+    : ['Q', '9', 'K', 'J', '10', 'lotus', 'boat', 'chicken', 'tiger', '9', 'K', 'tiger', 'lotus', 'Q', 'J']
   if (scenario === 'line' || scenario === 'multi') {
     for (let reel = 0; reel < 5; reel++) {
       board[cellAt(reel, 1)] = reel === 2 ? 'wild' : 'tiger'
@@ -230,7 +244,7 @@ export function generateBoard(rng: Random, scenario?: Scenario, free = false): S
     }
   }
   if (scenario === 'full') return Array<SymbolId>(CELLS).fill('orb')
-  if (scenario === 'grand') return Array.from({ length: CELLS }, (_, index) => index === CELLS - 1 ? 'J' : 'orb')
+  if (scenario === 'grand') return Array.from({ length: CELLS }, (_, index) => index === CELLS - 1 ? board[index] : 'orb')
   if (scenario === 'oneOrb') board[4] = 'orb'
   if (['six', 'sixThenHit', 'seven', 'mini', 'minor', 'major', 'lanternBoth'].includes(scenario)) {
     const cells = [0, 2, 4, 6, 10, 14, 8]
@@ -244,14 +258,17 @@ export function generateBoard(rng: Random, scenario?: Scenario, free = false): S
   return board
 }
 
-export function evaluateLines(board: SymbolId[], betPerLine: number, activeLines: number, legacyPaytable = false) {
-  const paytable: Partial<Record<SymbolId, { pays: readonly number[] | null }>> = legacyPaytable ? LEGACY_SYMBOLS : SYMBOLS
+export function evaluateLines(board: SymbolId[], unitSen: number, activeLines: number, version: PaytableVersion = DESIGN_B_VERSION) {
+  const oldTable: Partial<Record<SymbolId, { pays: readonly number[] | null }>> = version === 1 ? LEGACY_SYMBOLS : SYMBOLS
+  const creditTable: Partial<Record<SymbolId, Readonly<Partial<Record<number, number>>>>> =
+    version === DESIGN_B_VERSION ? LINE_CREDITS : CREDIT_V3_LINE_AWARDS
+  const pays = (symbol: SymbolId, count: number) => version >= CREDIT_PAYTABLE_VERSION
+    ? creditTable[symbol]?.[count] : oldTable[symbol]?.pays?.[count - 3]
   const wins: LineWin[] = []
   for (let line = 0; line < activeLines; line++) {
     const positions = paylinePositions[line]
     const first = board[positions[0]]
-    if (!paytable[first]?.pays) continue
-    const candidates = first === 'wild' ? legacyPayingSymbols : [first]
+    const candidates = first === 'wild' && version === 1 ? legacyPayingSymbols : [first]
     let best: LineWin | undefined
     for (const symbol of candidates) {
       let count = 0
@@ -260,7 +277,7 @@ export function evaluateLines(board: SymbolId[], betPerLine: number, activeLines
         if (actual !== symbol && actual !== 'wild') break
         count++
       }
-      const multiplier = paytable[symbol]?.pays?.[count - 3]
+      const multiplier = pays(symbol, count)
       if (multiplier && (!best || multiplier > best.multiplier ||
         (multiplier === best.multiplier && count > best.positions.length))) {
         best = { line, symbol, positions: positions.slice(0, count), multiplier }
@@ -268,7 +285,7 @@ export function evaluateLines(board: SymbolId[], betPerLine: number, activeLines
     }
     if (best) wins.push(best)
   }
-  const amount = wins.reduce((sum, win) => sum + betPerLine * win.multiplier, 0)
+  const amount = wins.reduce((sum, win) => sum + unitSen * win.multiplier, 0)
   return { wins, amount }
 }
 
@@ -277,18 +294,19 @@ export const legacyLinePayout = (numerator: number, lines: number) =>
   Math.floor((2 * numerator + lines) / (2 * lines))
 
 export function drawOrb(rng: Random, eligibleForJackpot: boolean, wager: OrbWager): Orb {
-  const type = eligibleForJackpot ? drawOrbType(rng) : 'ordinary'
+  const type = eligibleForJackpot ? orbTypesForVersion(wager.paytableVersion).draw(rng) : 'ordinary'
   return type === 'ordinary'
-    ? calculateOrbPrize(wager.denominationSen, wager.betSize, drawOrbMultiplier(rng))
+    ? priceWagerOrb(wager, multiplierDraws.get(orbWeightsForWager(wager))!(rng))
     : { tier: type, payoutSen: wager.jackpotPrizes[type] }
 }
 
 export const triggersBonus = (board: SymbolId[]) =>
   board.filter(symbol => symbol === 'orb').length >= BONUS.triggerCount
 
-export function evaluateScatter(board: SymbolId[], bet: number) {
+export function evaluateScatter(board: SymbolId[], bet: number, version: PaytableVersion = DESIGN_B_VERSION) {
   const count = board.reduce((total, symbol) => total + Number(symbol === 'lantern'), 0)
-  const multiplier = count >= 5 ? LANTERN.payouts[5] : count === 4 ? LANTERN.payouts[4] : count === 3 ? LANTERN.payouts[3] : 0
+  const payouts = version >= CREDIT_PAYTABLE_VERSION ? LANTERN.payouts : LEGACY_LANTERN_PAYOUTS
+  const multiplier = count >= 5 ? payouts[5] : count === 4 ? payouts[4] : count === 3 ? payouts[3] : 0
   return { count, amount: multiplier * bet, qualifies: count >= 3 }
 }
 
@@ -300,7 +318,7 @@ export function startingOrbs(board: SymbolId[], rng: Random, wager: OrbWager, sc
     const special = first && (scenario === 'mini' || scenario === 'minor' || scenario === 'major')
     first = false
     if (special) return { tier: scenario, payoutSen: wager.jackpotPrizes[scenario] }
-    return scenario ? calculateOrbPrize(wager.denominationSen, wager.betSize, demoMultiplier) : drawOrb(rng, eligibleForJackpot, wager)
+    return scenario ? priceWagerOrb(wager, demoMultiplier) : drawOrb(rng, eligibleForJackpot, wager)
   })
 }
 
@@ -314,7 +332,7 @@ export function respin(orbs: Slots, remaining: number, rng: Random, wager: OrbWa
     if (orb) return orb
     if (scenario === 'grand' || position === testHit) {
       landed++
-      return calculateOrbPrize(wager.denominationSen, wager.betSize, demoMultiplier)
+      return priceWagerOrb(wager, demoMultiplier)
     }
     if (scenario || rng() >= landingChance) return null
     landed++

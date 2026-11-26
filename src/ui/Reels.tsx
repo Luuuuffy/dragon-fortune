@@ -3,9 +3,11 @@ import { LockKeyhole } from 'lucide-react'
 import { cellAt, PAYLINES, REELS, ROWS } from '../game/config'
 import type { SymbolId } from '../game/config'
 import type { LineWin, Slots } from '../game/engine'
+import { FREE_SYMBOL_ORDER } from '../game/probabilityConfig'
 import { OrbSymbol, Symbol } from './Symbol'
 
 const filler: SymbolId[] = ['9', 'lotus', 'Q', 'boat', 'K', 'tiger', 'chicken', '10', 'J', 'orb']
+const freeFiller: readonly SymbolId[] = [...FREE_SYMBOL_ORDER, 'orb']
 const lineColors = ['#ffce68', '#f479a9', '#b1a3ff', '#7ff7c0', '#84dbff', '#ffffaa']
 const x = (index: number) => (Math.floor(index / ROWS) + 0.5) * 60
 const y = (index: number) => (index % ROWS + 0.5) * 40
@@ -33,15 +35,18 @@ export function LinesOverlay({ wins, preview }: { wins: LineWin[]; preview: numb
 }
 
 export function Reels({ board, boardOrbs, target, stopped, duration, bonus, baseOrbs, respinning,
-  stoppedCells, nextBonusOrbs, landedSymbols, highlightLanterns, wins, preview, spinId, anticipation, reducedReels, compactReels, onReelStop }: {
+  stoppedCells, nextBonusOrbs, landedSymbols, highlightLanterns, wins, preview, spinId, anticipation, reducedReels, compactReels, onReelStop,
+  freeSymbols }: {
   board: SymbolId[]; target: SymbolId[] | null; stopped: number[]; duration: number[]; bonus: Slots | null;
   boardOrbs: Slots;
   baseOrbs: Slots | null; respinning: boolean; landedSymbols: number[]; highlightLanterns: boolean; wins: LineWin[];
   stoppedCells: number[]; nextBonusOrbs: Slots | null;
   preview: number | null; spinId: string; anticipation: boolean; reducedReels: boolean; compactReels: boolean;
   onReelStop: (reel: number) => void;
+  freeSymbols: boolean;
 }) {
   const winningCells = new Set(wins.flatMap(win => win.positions))
+  const stripFiller = freeSymbols ? freeFiller : filler
   return <div className={`cabinet ${bonus ? 'bonus-cabinet' : ''} ${anticipation ? 'anticipating' : ''}${compactReels ? ' compact-effects' : ''}`}>
     <div className="frame-corner top-left"/><div className="frame-corner top-right"/>
     <div className="frame-corner bottom-left"/><div className="frame-corner bottom-right"/>
@@ -55,7 +60,7 @@ export function Reels({ board, boardOrbs, target, stopped, duration, bonus, base
         const strip = target && !reducedReels ? [
           ...target.slice(reel * ROWS, reel * ROWS + ROWS),
           ...Array.from({ length: compactReels ? 7 + 2 * reel : 12 + 3 * reel },
-            (_, i) => filler[(i + 3 * reel) % filler.length]),
+            (_, i) => stripFiller[(i + 3 * reel) % stripFiller.length]),
           ...previous,
         ] : previous
         return <div className={`reel ${spinning ? 'spinning' : target ? 'stopped' : ''} ${anticipation && spinning ? 'potential' : ''}`} key={reel}>

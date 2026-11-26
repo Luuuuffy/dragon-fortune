@@ -1,4 +1,4 @@
-import { BET_SIZES, CELLS, DENOMINATIONS_SEN, JACKPOT_TIERS, LEGACY_BETS, LEGACY_LINE_COUNTS, LINE_OPTIONS,
+import { BET_SIZES, CELLS, CREDIT_PAYTABLE_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_BETS, LEGACY_LINE_COUNTS, LINE_OPTIONS,
   MAX_INITIAL_BANKROLL, PAYLINES, START_BALANCE, calculateJackpots, legacyJackpots, totalBetSen } from './config'
 import { BONUS } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
@@ -30,10 +30,11 @@ const slots = (value: unknown, version: number): value is (RecordValue | null)[]
   Array.isArray(value) && value.length === CELLS && value.every(orb =>
     orb === null || (object(orb) &&
       (version < 5 || integer(orb.payoutSen, 1, MAX_STORED_ORB_PAYOUT)) && ('tier' in orb
-      ? specialTier(orb.tier) && !('multiplier' in orb) && !('value' in orb)
+      ? specialTier(orb.tier) && !('multiplier' in orb) && !('value' in orb) && !('displayMyr' in orb)
       : version < 3 ? member(orb.multiplier, oldMultipliers)
       : integer(orb.value, 1, version === 5 ? MAX_STORED_ORB_PAYOUT : maxSafeOrbValue) &&
-        (version === 5 ? orb.multiplier === null || integer(orb.multiplier, 1) : !('multiplier' in orb)))))
+        (version === 5 ? (orb.multiplier === null || integer(orb.multiplier, 1)) &&
+          (orb.displayMyr === undefined || orb.displayMyr === true) : !('multiplier' in orb)))))
 const matchesBoard = (orbs: (RecordValue | null)[], symbols: SymbolId[]) =>
   orbs.every((orb, index) => Boolean(orb) === (symbols[index] === 'orb'))
 const jackpotCounts = (value: unknown): value is Record<Jackpot, number> =>
@@ -42,13 +43,22 @@ const samePrizes = (value: unknown, prizes: JackpotPrizes): value is JackpotPriz
   object(value) && JACKPOT_TIERS.every(tier => value[tier] === prizes[tier])
 const storedPrizes = (spin: RecordValue) => (spin.jackpotPrizes as JackpotPrizes | undefined) ?? legacyJackpots(spin.bet as number)
 const spinDenomination = (spin: RecordValue) => (spin.betting as Betting | null)?.denominationSen ?? 1
-const pricedFor = (orbs: (RecordValue | null)[], spin: RecordValue, version: number) => version < 5 ||
-  orbs.every(orb => !orb || orb.payoutSen === (specialTier(orb.tier)
-    ? storedPrizes(spin)[orb.tier] : (orb.value as number) * spinDenomination(spin)))
+function pricedFor(orbs: (RecordValue | null)[], spin: RecordValue, version: number) {
+  if (version < 5) return true
+  const denomination = spinDenomination(spin)
+  return orbs.every(orb => {
+    if (!orb) return true
+    if (specialTier(orb.tier)) return orb.payoutSen === storedPrizes(spin)[orb.tier]
+    if (orb.payoutSen !== (orb.value as number) * denomination) return false
+    const wagerPriced = spin.paytableVersion === CREDIT_PAYTABLE_VERSION || spin.paytableVersion === DESIGN_B_VERSION
+    return !wagerPriced || (integer(orb.multiplier, 1) &&
+      orb.payoutSen === (spin.bet as number) * orb.multiplier && Boolean(orb.displayMyr) === (denomination >= 100))
+  })
+}
 const lineWins = (lines: unknown) => Array.isArray(lines) && lines.length <= PAYLINES.length && lines.every(win =>
   object(win) && knownSymbol(win.symbol) && integer(win.line, 0, PAYLINES.length - 1) &&
   integer(win.multiplier, 1) && Array.isArray(win.positions) &&
-  win.positions.length >= 3 && win.positions.length <= 5 &&
+  win.positions.length >= (win.symbol === 'tiger' ? 2 : 3) && win.positions.length <= 5 &&
   win.positions.every(position => integer(position, 0, CELLS - 1)))
 const betting = (value: unknown): value is Betting => object(value) && validBetting(value as Betting)
 const sameBetting = (left: unknown, right: unknown) =>
@@ -60,7 +70,8 @@ const spin = (value: unknown, legacy: boolean): value is RecordValue =>
     : betting(value.betting) && value.bet === totalBetSen(value.betting) && value.lines === value.betting.lines) &&
   (value.jackpotPrizes === undefined || (betting(value.betting) &&
     samePrizes(value.jackpotPrizes, calculateJackpots(value.betting.denominationSen)))) &&
-  (value.paytableVersion === undefined || value.paytableVersion === 2) &&
+  (value.paytableVersion === undefined || value.paytableVersion === 2 ||
+    ((value.paytableVersion === CREDIT_PAYTABLE_VERSION || value.paytableVersion === DESIGN_B_VERSION) && betting(value.betting))) &&
   board(value.board) && (value.scenario === undefined ||
     (typeof value.scenario === 'string' && Object.hasOwn(SCENARIOS, value.scenario)))
 const result = (value: unknown): value is RecordValue => {
@@ -98,9 +109,14 @@ function validFeature(value: unknown, version: number): value is FreeSpins {
   if (value.paidHold !== null && !heldBoard(value.paidHold, value.root, version)) return false
   const next = value.nextHold
   return next === null || (object(next) && spin(next.spin, false) &&
+    sameDesignBProfile(value.root, next.spin) &&
     next.spin.id === `${value.root.id}:free:${value.awarded - value.remaining}` &&
     sameBetting(next.spin.betting, value.root.betting) && heldBoard(next.orbs, next.spin, version))
 }
+
+// Legacy features could have an unversioned root and a version 2 free spin.
+const sameDesignBProfile = (root: RecordValue, child: RecordValue) =>
+  (root.paytableVersion === DESIGN_B_VERSION) === (child.paytableVersion === DESIGN_B_VERSION)
 
 function validRound(value: unknown, session: RecordValue, version: number) {
   if (!object(value)) return false
@@ -116,7 +132,7 @@ function validRound(value: unknown, session: RecordValue, version: number) {
   if (feature?.nextHold && phase !== 'FREE_WAIT') return false
   if (phase === 'FREE_INTRO' || phase === 'FREE_WAIT') {
     if (!feature || !object(value.outcome)) return false
-    const scatter = evaluateScatter(session.board as SymbolId[], feature.root.bet)
+    const scatter = evaluateScatter(session.board as SymbolId[], feature.root.bet, feature.root.paytableVersion ?? 1)
     return value.outcome.scatter === scatter.amount && value.outcome.lanterns === scatter.count &&
       integer(value.outcome.line) && lineWins(value.outcome.lines) &&
       (phase === 'FREE_INTRO'
@@ -136,7 +152,7 @@ function validRound(value: unknown, session: RecordValue, version: number) {
     (!object(session.last) || candidate.id !== session.last.spinId)
   if (phase === 'SPINNING') {
     if (!pendingSpin(value.spin)) return false
-    if (feature && value.spin.id !== currentFreeId) return false
+    if (feature && (value.spin.id !== currentFreeId || !sameDesignBProfile(feature.root, value.spin))) return false
     const spinBoard = value.spin.board as SymbolId[]
     const trigger = spinBoard.filter(symbol => symbol === 'orb').length >= BONUS.triggerCount
     if (version < 3 && !trigger) return orbs === null
@@ -150,7 +166,8 @@ function validRound(value: unknown, session: RecordValue, version: number) {
   if (phase !== 'BONUS_TRIGGER' && phase !== 'BONUS_READY' && phase !== 'BONUS_RESPIN') return false
   if (!object(bonus) || !pendingSpin(bonus.spin) || !slots(bonus.orbs, version) || !pricedFor(bonus.orbs, bonus.spin, version) ||
       !integer(bonus.remaining, 1, BONUS.respins) || !integer(bonus.turn, 0, CELLS * BONUS.respins)) return false
-  if (feature && bonus.spin.id !== currentFreeId && bonus.spin.id !== feature.root.id) return false
+  if (feature && ((bonus.spin.id !== currentFreeId && bonus.spin.id !== feature.root.id) ||
+      !sameDesignBProfile(feature.root, bonus.spin))) return false
   const locked = bonus.orbs
   const spinBoard = bonus.spin.board as string[]
   if (spinBoard.filter(symbol => symbol === 'orb').length < BONUS.triggerCount ||
@@ -262,6 +279,7 @@ export function parseSession(raw: string | null): Session | null {
   try {
     const value: unknown = JSON.parse(raw)
     if (!object(value) || !integer(value.version, 1, 5) ||
+      (value.gameplayRevision !== undefined && !integer(value.gameplayRevision)) ||
       !integer(value.balance) || !board(value.board) ||
       (value.last !== null && !result(value.last))) return null
     const legacy = value.version === 1

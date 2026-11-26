@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, it, vi } from 'vitest'
-import { newSession, openBonus, revealRespin, revealSpin, setBankroll, startRespin, startSpin } from '../game/session'
+import { completeHoldCollection, newSession, openBonus, revealRespin, revealSpin, setBankroll, startRespin, startSpin } from '../game/session'
+import { calculateOrbPrize } from '../game/orbPrizes'
 import { App } from './App'
 import { Bankroll } from './Bankroll'
 import { OrbSymbol } from './Symbol'
@@ -16,10 +17,11 @@ vi.mock('./useRoundAnimation', () => ({
 }))
 
 it('renders each ordinary face number in the orb and keeps jackpot names', () => {
-  for (const value of [8, 40, 1600]) {
-    const markup = renderToStaticMarkup(<OrbSymbol orb={{ value, multiplier: value / 8, payoutSen: value * 10 }}/>)
-    expect(markup).toContain(`aria-label="Gold orb ${value}"`)
-    expect(markup).toContain(`>${value}</text>`)
+  for (const [orb, face] of [[calculateOrbPrize(1, 100, 1), '100'], [calculateOrbPrize(50, 800, 100), '1,600'],
+    [calculateOrbPrize(100, 800, 1), 'RM8'], [calculateOrbPrize(200, 1600, 1), 'RM16']] as const) {
+    const markup = renderToStaticMarkup(<OrbSymbol orb={orb}/>)
+    expect(markup).toContain(`aria-label="Gold orb ${face}"`)
+    expect(markup).toContain(`>${face}</text>`)
     expect(markup).not.toContain('BONUS')
   }
   expect(renderToStaticMarkup(<OrbSymbol orb={{ tier: 'mini', payoutSen: 50_000 }}/>)).toContain('MINI RM 500.00')
@@ -30,6 +32,8 @@ it('shows the reset control beside balance and removes the cabinet total win fie
   current.session = session
   const cabinet = renderToStaticMarkup(<App/>)
   expect(cabinet).toMatch(/class="bankroll-reset">Reset bankroll/)
+  expect(cabinet).toContain('<small>100,000 credits</small>')
+  expect(cabinet).toContain('<small>8 credits</small>')
   expect(cabinet).not.toContain('Total win')
 
   current.session = startSpin(session, () => 0.8, 'spin')
@@ -79,6 +83,11 @@ it('spins only empty cells and derives one flight per stored orb, with GRAND las
   expect(prizes.reduce((sum, prize) => sum + prize.amount, 0)).toBe(settled.round.result.total)
   current.session = settled
   expect(renderToStaticMarkup(<App/>)).toContain('BONUS WIN <strong>RM 0.00</strong>')
+  current.session = completeHoldCollection(settled, settled.round.result.bonusId!)
+  const collected = renderToStaticMarkup(<App/>)
+  expect(collected).toMatch(/<button type="button" class="spin-button">.*?<\/svg>Continue<\/button>/)
+  expect(collected.match(/Continue<\/button>/g)).toHaveLength(1)
+  expect(collected).not.toContain('>Skip</button>')
 })
 
 it('anchors the curved dragon path to both measured points after a resize', () => {

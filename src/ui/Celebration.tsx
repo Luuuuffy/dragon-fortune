@@ -1,10 +1,12 @@
 import type { CSSProperties } from 'react'
-import { CELEBRATIONS, money } from '../game/config'
+import { CELEBRATIONS, credits, money } from '../game/config'
 import type { Result } from '../game/engine'
 
-export function ResultBreakdown({ result, showTotal = true }: { result: Result; showTotal?: boolean }) {
+export function ResultBreakdown({ result, denominationSen, showTotal = true }: {
+  result: Result; denominationSen?: number; showTotal?: boolean;
+}) {
   return <dl className="breakdown">
-    <div><dt>Line win</dt><dd>{money(result.line)}</dd></div>
+    <div><dt>Line win</dt><dd>{money(result.line)}{denominationSen && result.line > 0 && ` · ${credits(result.line, denominationSen)} credits`}</dd></div>
     {!!result.scatter && <div><dt>Lantern Scatter</dt><dd>{money(result.scatter)}</dd></div>}
     <div><dt>Bonus win</dt><dd>{money(result.bonus)}</dd></div>
     <div><dt>Jackpot win</dt><dd>{money(result.jackpot)}</dd></div>
