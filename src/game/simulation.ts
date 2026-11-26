@@ -7,7 +7,7 @@ import { CELLS, CURRENT_MATH_VERSION, calculateJackpots } from './config'
 import type { PaytableVersion, SymbolId } from './config'
 import { orbWeightsForWager, priceWagerOrb } from './orbPrizes'
 
-export function expectedHoldPayout(denominationSen: number, bet: number, legacy = false,
+export function expectedHoldPayout({ denominationSen, bet, betSize }: { denominationSen: number; bet: number; betSize: number }, legacy = false,
   grandAddsToOrbs: boolean = BONUS.grandAddsToOrbs, paytableVersion: PaytableVersion = legacy ? 2 : CURRENT_MATH_VERSION) {
   const paidEntry = lanternCountOdds(false, paytableVersion).slice(3).reduce((sum, chance) => sum + chance, 0)
   const retrigger = lanternCountOdds(true, paytableVersion).slice(3).reduce((sum, chance) => sum + chance, 0)
@@ -17,7 +17,7 @@ export function expectedHoldPayout(denominationSen: number, bet: number, legacy 
   const grandAwards = paid.full + freeBoards * free.full
   const paidOrbs = paid.orbs + freeBoards * free.orbs - (grandAddsToOrbs ? 0 : CELLS * grandAwards)
   const prizes = calculateJackpots(denominationSen)
-  const wager = { denominationSen, bet, paytableVersion, legacyBetSize: legacy ? 1 : undefined }
+  const wager = { denominationSen, bet, betSize, paytableVersion, legacyBetSize: legacy ? 1 : undefined }
   const weights = orbWeightsForWager(wager)
   const multiplierWeight = weights.reduce((sum, [, weight]) => sum + weight, 0)
   const ordinaryMean = weights.reduce((sum, [multiplier, weight]) =>
@@ -38,7 +38,8 @@ export function simulate({ spins, denominationSen, bet, lines, seed, legacy = fa
   const rng = seededRandom(seed)
   const jackpotPrizes = calculateJackpots(denominationSen)
   const version: PaytableVersion = legacy ? 2 : CURRENT_MATH_VERSION
-  const wager = { denominationSen, bet, jackpotPrizes, paytableVersion: version, legacyBetSize: legacy ? 1 : undefined }
+  const betSize = legacy ? 1 : bet / (denominationSen * lines)
+  const wager = { denominationSen, bet, betSize, jackpotPrizes, paytableVersion: version, legacyBetSize: legacy ? 1 : undefined }
   const jackpotCounts = { grand: 0, major: 0, minor: 0, mini: 0 }
   const jackpotHits = { grand: 0, major: 0, minor: 0, mini: 0 }
   const lastJackpotSpin = { grand: -1, major: -1, minor: -1, mini: -1 }

@@ -2,13 +2,16 @@ import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { BALANCED_BONUS_VERSION, BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS,
-  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_TIERS, LATE_RESPIN_VERSION,
+  CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_BOOST_VERSION, JACKPOT_TIERS,
+  JACKPOT_TRIAL_VERSION, LATE_ORB_SPLIT_VERSION, LATE_RESPIN_VERSION,
   MATCHED_LANTERN_VERSION, ORB_VARIETY_VERSION, RICH_BONUS_VERSION,
-  LINE_CREDITS, LINE_OPTIONS, PAYLINES, SYMBOLS, betPerLineSen, calculateJackpots, denominationLabel, money, totalBetSen,
-  wagerCredits } from '../game/config'
+  LINE_CREDITS, LINE_OPTIONS, PAYLINES, SYMBOLS, betPerLineSen, calculateJackpots, denominationLabel, money,
+  totalBetSen } from '../game/config'
 import { BONUS, bonusEntryChance, respinRates } from '../game/bonusConfig'
-import { isMinimumOrbWager, orbFaceLabel, orbWeightsForWager, priceWagerOrb } from '../game/orbPrizes'
+import { isMinimumOrbWager, ordinaryOrbBaseBet, ORDINARY_ORB_REFERENCE_LINES, orbFaceLabel, orbWeightsForWager,
+  priceWagerOrb } from '../game/orbPrizes'
 import { LANTERN } from '../game/lanternConfig'
+import { ORDINARY_ORB_SPLIT_WAGER } from '../game/probabilityConfig'
 import type { Betting, JackpotPrizes, PaytableVersion, SymbolId } from '../game/config'
 import { SCENARIOS, boardOrbChance, orbTypeProbabilities } from '../game/engine'
 import type { Scenario } from '../game/engine'
@@ -74,18 +77,22 @@ const theoreticalRtp = {
   [RICH_BONUS_VERSION]: '97.60–99.40%',
   [BALANCED_BONUS_VERSION]: '93.52–97.99%',
   [MATCHED_LANTERN_VERSION]: '94.84–99.16%',
-  [CURRENT_MATH_VERSION]: '95.13–99.81%',
+  [JACKPOT_BOOST_VERSION]: '95.13–99.81%',
+  [JACKPOT_TRIAL_VERSION]: '97.05–123.34%',
+  [LATE_ORB_SPLIT_VERSION]: '97.12–191.33%',
+  [CURRENT_MATH_VERSION]: '48.52–191.33%',
 }
 
 function Paytable({ betting, version, prizes }: { betting: Betting; version: PaytableVersion; prizes: JackpotPrizes }) {
   const { denominationSen, betSize } = betting
   const bet = totalBetSen(betting)
-  const totalCredits = wagerCredits(betting)
   const scaled = version >= DESIGN_B_VERSION
   const lineScale = scaled ? betSize : 1
   const awardsTable = scaled ? LINE_CREDITS : CREDIT_V3_LINE_AWARDS
   const types = Object.fromEntries(orbTypeProbabilities(version))
-  const wager = { denominationSen, bet, paytableVersion: version }
+  const wager = { denominationSen, bet, betSize, paytableVersion: version }
+  const orbBet = ordinaryOrbBaseBet(wager)
+  const orbCredits = orbBet / denominationSen
   const weights = orbWeightsForWager(wager)
   const totalWeight = weights.reduce((sum, [, weight]) => sum + weight, 0)
   const rates = respinRates(version)
@@ -115,7 +122,9 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
     <h3>Hold & Spin prizes</h3>
     <p>Six or more Gold Orbs start the feature. Entry is {entryRate(false)}% per paid spin and {entryRate(true)}% per Lantern Free Spin.
       A new orb restores three respins. Ordinary orb faces show credits below RM1 denomination and virtual MYR at RM1 and RM2.
-      Each ordinary orb pays the triggering spin’s total bet × its multiplier.</p>
+      {' '}{version === CURRENT_MATH_VERSION
+        ? <>A 1× orb pays {ORDINARY_ORB_REFERENCE_LINES} × denomination × Bet Size. Each multiplier uses that amount.</>
+        : <>Each ordinary orb pays the triggering spin’s total bet × its multiplier.</>}</p>
     <ul className="orb-values">
       {rates.map(([limit, chance], index) => {
         const first = rates[index - 1]?.[0] ?? BONUS.triggerCount
@@ -123,10 +132,14 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
         return <li key={limit}><b>{first === last ? first : `${first}–${last}`} held</b> {percent(chance)} per empty cell</li>
       })}
     </ul>
-    {scaled && <p>Ordinary multiplier chances depend on Bet Size × Active Lines.
-      {version >= LATE_RESPIN_VERSION && isMinimumOrbWager(denominationSen, totalCredits) &&
-        ' The minimum wager uses its own mix because fixed jackpots account for more of its return.'}
-      {' '}These are the chances per ordinary orb for the current <strong>{totalCredits}-credit</strong> wager.</p>}
+    {scaled && <p>{version === CURRENT_MATH_VERSION
+      ? 'Ordinary orb values and chances depend on denomination and Bet Size.'
+      : 'Ordinary multiplier chances depend on Bet Size × Active Lines.'}
+      {version >= LATE_RESPIN_VERSION && isMinimumOrbWager(denominationSen, orbCredits) &&
+        ' The 1¢ denomination at Bet Size 1 uses its own mix because fixed jackpots account for more of the return.'}
+      {version >= LATE_ORB_SPLIT_VERSION && denominationSen === ORDINARY_ORB_SPLIT_WAGER.denominationSen &&
+        orbBet === ORDINARY_ORB_SPLIT_WAGER.bet && ' In this mix, 1×–4× account for 90% and 5× or higher account for 10%.'}
+    </p>}
     <ul className="orb-values">
       {weights.map(([multiplier, weight]) => {
         const orb = priceWagerOrb(wager, multiplier)
@@ -223,8 +236,7 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
       <p>Paid spins and Free Spins multiply base line credits by Bet Size. Across all supported wagers, the theoretical return for new wagers is {theoreticalRtp[CURRENT_MATH_VERSION]}.</p>
       <h3>Hold & Spin</h3>
       <p>Land six or more Gold Orbs to start with three respins. Orbs stay in their original cells and only empty positions respin. Each newly filled cell resets the counter to three. The round ends at zero respins or a full board.</p>
-      <p>Total Credits Wagered is Bet Size × Active Lines. This total determines the ordinary multiplier odds.
-        The minimum 1¢ wager has its own multiplier mix. The Paytable lists the active odds.</p>
+      <p>A 1× Gold Orb pays {ORDINARY_ORB_REFERENCE_LINES} × denomination × Bet Size. The Paytable shows the values and odds for your denomination and Bet Size.</p>
       <h3>Lantern Free Spins</h3>
       <p>Land Red Lanterns on three or more reels in a paid spin for {LANTERN.initialSpins} automatic Free Spins.
         Land three or more during a Free Spin for {LANTERN.extraSpins} extra spins. Chicken, Boat, Lotus and Tiger are the paying symbols throughout the feature. Hold &amp; Spin rounds triggered during Free Spins also play automatically.</p>

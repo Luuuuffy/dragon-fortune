@@ -49,7 +49,8 @@ export const DESIGN_B_ORB_TYPES = { ordinary: 99.86799, mini: 0.12, minor: 0.012
 export const BONUS_REBALANCE_ORB_TYPES = { ordinary: 99.88999, mini: 0.10, minor: 0.01, major: 0.00001 } as const
 export const ORB_VARIETY_TYPES = { ordinary: 99.98349, mini: 0.015, minor: 0.0015, major: 0.00001 } as const
 export const BALANCED_BONUS_ORB_TYPES = { ordinary: 99.96699, mini: 0.03, minor: 0.003, major: 0.00001 } as const
-export const CURRENT_ORB_TYPES = { ordinary: 99.963689, mini: 0.033, minor: 0.0033, major: 0.000011 } as const
+export const JACKPOT_BOOST_ORB_TYPES = { ordinary: 99.963689, mini: 0.033, minor: 0.0033, major: 0.000011 } as const
+export const CURRENT_ORB_TYPES = { ordinary: 99.8899, mini: 0.1, minor: 0.01, major: 0.0001 } as const
 
 // Design B's published schedule. The high distribution is blended in these basis points.
 export const ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
@@ -72,6 +73,7 @@ export const BONUS_REBALANCE_HIGH_MIX_BPS: Readonly<Partial<Record<number, numbe
 
 export const ORB_VARIETY_MULTIPLIERS = [1, 2, 3, 4, 5, 8, 10, 20, 50, 100, 200] as const
 export const CURRENT_ORB_MULTIPLIERS = [1, 2, 3, 4, 5, 6, 8, 10, 20, 50, 100, 200] as const
+export const ORDINARY_ORB_SPLIT_WAGER = { denominationSen: 10, bet: 80, lowerShare: 0.9 } as const
 export const ORB_VARIETY_LOW_WEIGHTS = [53, 29, 9, 6, 2, 0.72, 0.23, 0.04, 0.008, 0.0015, 0.0005] as const
 export const ORB_VARIETY_HIGH_WEIGHTS = [26, 36, 19, 13, 4, 1.4, 0.48, 0.09, 0.026, 0.003, 0.001] as const
 export const RICH_BONUS_LOW_WEIGHTS = [25, 20, 21, 16, 13, 3.5, 1.25, 0.2, 0.04, 0.009, 0.001] as const
@@ -136,8 +138,11 @@ export const BONUS_REBALANCE_RESPIN_RATES = [[8, 0.091], [10, 0.043], [12, 0.01]
 export const EARLY_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.01], [CELLS, 0.00105]] as const
 export const LATE_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.02], [CELLS, 0.00105]] as const
 export const RICH_BONUS_RESPIN_RATES = [[8, 0.13], [10, 0.067], [12, 0.023], [CELLS, 0.00105]] as const
-export const CURRENT_RESPIN_RATES = [
+export const BALANCED_BONUS_RESPIN_RATES = [
   [8, 0.07], [9, 0.063], [10, 0.058], [11, 0.044], [12, 0.031], [13, 0.004], [CELLS, 0.0009],
+] as const
+export const CURRENT_RESPIN_RATES = [
+  [8, 0.07], [9, 0.063], [10, 0.058], [11, 0.044], [12, 0.031], [13, 0.02], [14, 0.01], [CELLS, 0.0009],
 ] as const
 
 // Used only for respins and Free Spins continuing under earlier saved rules.

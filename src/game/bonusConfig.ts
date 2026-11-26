@@ -1,12 +1,12 @@
 import { BALANCED_BONUS_VERSION, BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, EARLY_RESPIN_VERSION,
-  LATE_RESPIN_VERSION, RICH_BONUS_VERSION } from './config'
+  LATE_ORB_SPLIT_VERSION, LATE_RESPIN_VERSION, RICH_BONUS_VERSION } from './config'
 import type { PaytableVersion } from './config'
-import { BONUS, BONUS_REBALANCE_RESPIN_RATES, CURRENT_RESPIN_RATES, EARLY_RESPIN_RATES, LATE_RESPIN_RATES,
+import { BONUS, BALANCED_BONUS_RESPIN_RATES, BONUS_REBALANCE_RESPIN_RATES, CURRENT_RESPIN_RATES, EARLY_RESPIN_RATES, LATE_RESPIN_RATES,
   RICH_BONUS_RESPIN_RATES } from './probabilityConfig'
 export { BONUS } from './probabilityConfig'
 
 for (const rates of [BONUS.respinLandingRates, BONUS_REBALANCE_RESPIN_RATES, EARLY_RESPIN_RATES, LATE_RESPIN_RATES,
-  RICH_BONUS_RESPIN_RATES, CURRENT_RESPIN_RATES]) {
+  RICH_BONUS_RESPIN_RATES, BALANCED_BONUS_RESPIN_RATES, CURRENT_RESPIN_RATES]) {
   if (rates.at(-1)?.[0] !== CELLS || rates.some(([limit, chance], index) =>
     !Number.isInteger(limit) || limit <= (rates[index - 1]?.[0] ?? BONUS.triggerCount) ||
     !Number.isFinite(chance) || chance < 0 || chance > 1)) {
@@ -15,7 +15,8 @@ for (const rates of [BONUS.respinLandingRates, BONUS_REBALANCE_RESPIN_RATES, EAR
 }
 
 export function respinRates(version: PaytableVersion = CURRENT_MATH_VERSION) {
-  if (version >= BALANCED_BONUS_VERSION) return CURRENT_RESPIN_RATES
+  if (version >= LATE_ORB_SPLIT_VERSION) return CURRENT_RESPIN_RATES
+  if (version >= BALANCED_BONUS_VERSION) return BALANCED_BONUS_RESPIN_RATES
   if (version === RICH_BONUS_VERSION) return RICH_BONUS_RESPIN_RATES
   if (version === LATE_RESPIN_VERSION) return LATE_RESPIN_RATES
   if (version === EARLY_RESPIN_VERSION) return EARLY_RESPIN_RATES

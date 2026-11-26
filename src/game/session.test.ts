@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION,
-  ORB_VARIETY_VERSION, RICH_BONUS_VERSION, calculateJackpots, cellAt,
+import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_BOOST_VERSION, LATE_RESPIN_VERSION,
+  JACKPOT_TRIAL_VERSION, LATE_ORB_SPLIT_VERSION, ORB_VARIETY_VERSION, RICH_BONUS_VERSION, calculateJackpots, cellAt,
   legacyJackpots, parseBankroll, START_BALANCE, totalBetSen } from './config'
 import { calculateOrbPrize } from './orbPrizes'
 import type { Scenario } from './engine'
@@ -26,7 +26,7 @@ describe('round transitions and persistence', () => {
     expect(changed.betting).toEqual({ denominationSen: 10, betSize: 1, lines: 38 })
     expect(changed.stats).toEqual(selected.stats)
     expect(changed.balance).toBe(selected.balance)
-    expect(changed.boardOrbs.find(Boolean)).toMatchObject({ value: 38, payoutSen: 380 })
+    expect(changed.boardOrbs.find(Boolean)).toMatchObject({ value: 8, payoutSen: 80 })
     const spinning = begin('none', changed)
     expect(selectDenomination(spinning, 50)).toBe(spinning)
   })
@@ -71,6 +71,7 @@ describe('round transitions and persistence', () => {
     [DESIGN_B_VERSION, 6, 0.10, 0], [ORB_VARIETY_VERSION, 6, 0.10, 0],
     [EARLY_RESPIN_VERSION, 6, 0.10, 1], [EARLY_RESPIN_VERSION, 10, 0.015, 0],
     [LATE_RESPIN_VERSION, 10, 0.0215, 0], [RICH_BONUS_VERSION, 10, 0.03, 0], [CURRENT_MATH_VERSION, 10, 0.03, 1],
+    [JACKPOT_TRIAL_VERSION, 12, 0.015, 0], [CURRENT_MATH_VERSION, 12, 0.015, 1],
   ] as const)(
     'keeps profile %i respin odds after reloading with %i held', (paytableVersion, held, landingRoll, landed) => {
       const active = begin('six')
@@ -105,7 +106,9 @@ describe('round transitions and persistence', () => {
     const active = begin('six', selectBetting(funded(), { denominationSen: 20, betSize: 3, lines: 38 }))
     if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
     const spin = { ...active.round.spin, scenario: undefined, paytableVersion: 3 as const }
-    const pending = reload({ ...active, round: { ...active.round, spin } })
+    const orbs = active.round.orbs.map(orb => orb && 'multiplier' in orb && orb.multiplier !== null
+      ? calculateOrbPrize(20, spin.bet, orb.multiplier) : orb)
+    const pending = reload({ ...active, round: { ...active.round, spin, orbs } })
     const ready = reload(openBonus(revealSpin(pending, 'test'), 'test'))
     if (ready.round.phase !== 'BONUS_READY') throw new Error('Expected a ready bonus')
     const draws = [0, 0.9985]
@@ -116,7 +119,7 @@ describe('round transitions and persistence', () => {
     expect(respinning.balance).toEqual(ready.balance)
   })
 
-  it.each([[BONUS_REBALANCE_VERSION, true], [CURRENT_MATH_VERSION, false]] as const)(
+  it.each([[BONUS_REBALANCE_VERSION, true], [JACKPOT_BOOST_VERSION, false], [CURRENT_MATH_VERSION, true]] as const)(
     'keeps profile %i jackpot odds for respins after a reload', (paytableVersion, mini) => {
       const active = begin('six')
       if (active.round.phase !== 'SPINNING') throw new Error('Expected a pending spin')
@@ -322,7 +325,7 @@ describe('round transitions and persistence', () => {
       for (let turn = 1; turn <= 3; turn++) {
         expect(lastWinSen(active)).toBe(0)
         expect(active.boardOrbs.filter(Boolean)).toEqual(Array(6).fill(calculateOrbPrize(
-          session.betting.denominationSen, totalBetSen(session.betting), 2)))
+          session.betting.denominationSen, 8 * session.betting.betSize * session.betting.denominationSen, 2)))
         active = reload(revealRespin(startRespin(active, rng), id, turn))
       }
       return active
@@ -333,19 +336,30 @@ describe('round transitions and persistence', () => {
     expect(lastWinSen(bonus)).toBe(6 * 16 * 10)
     const changed = selectBetting(dismissResult(bonus, 'first-bonus'), { denominationSen: 20, betSize: 3, lines: 88 })
     expect(lastWinSen(changed)).toBe(lastWinSen(bonus))
-    expect(lastWinSen(completeHoldCollection(bonusAt(changed, 'second-bonus'), 'second-bonus:bonus'))).toBe(6 * 2 * 88 * 3 * 20)
+    expect(lastWinSen(completeHoldCollection(bonusAt(changed, 'second-bonus'), 'second-bonus:bonus'))).toBe(6 * 2 * 8 * 3 * 20)
   })
 
-  it('prices ordinary orbs from the whole wager and keeps jackpots tied to denomination', () => {
+  it('keeps ordinary orb payouts independent of active lines through reload and settlement', () => {
     const initial = selectBetting(funded(), { denominationSen: 50, betSize: 5 })
     const narrow = begin('mini', initial)
     const wide = begin('mini', selectBetting(initial, { lines: 88 }))
     if (narrow.round.phase !== 'SPINNING' || wide.round.phase !== 'SPINNING') throw new Error('Expected pending spins')
     expect(narrow.round.spin.bet).not.toBe(wide.round.spin.bet)
     expect(narrow.round.orbs[2]).toEqual({ multiplier: 2, value: 80, payoutSen: 4000 })
-    expect(wide.round.orbs[2]).toEqual({ multiplier: 2, value: 880, payoutSen: 44_000 })
+    expect(wide.round.orbs[2]).toEqual({ multiplier: 2, value: 80, payoutSen: 4000 })
     expect(narrow.round.orbs.filter(Boolean)).toContainEqual({ tier: 'mini', payoutSen: 250_000 })
     expect(wide.round.orbs.filter(Boolean)).toContainEqual({ tier: 'mini', payoutSen: 250_000 })
+    const settle = (pending: Session) => {
+      let ready = reload(openBonus(revealSpin(reload(pending), 'test'), 'test'))
+      for (let turn = 1; turn <= 3; turn++) ready = reload(revealRespin(startRespin(ready, rng), 'test', turn))
+      return ready.last
+    }
+    expect(settle(wide)).toMatchObject({ bet: 22_000, bonus: 20_000, jackpot: 250_000 })
+
+    const spin: typeof wide.round.spin = { ...wide.round.spin, paytableVersion: LATE_ORB_SPLIT_VERSION }
+    const orbs = wide.round.orbs.map(orb => orb && 'multiplier' in orb ? calculateOrbPrize(50, spin.bet, 2) : orb)
+    const previous = { ...wide, round: { ...wide.round, spin, orbs } }
+    expect(settle(previous)).toMatchObject({ bet: 22_000, bonus: 220_000, jackpot: 250_000 })
   })
 
   it('preserves locked v4 Free Spin board payouts and defaults the new music control on migration', () => {

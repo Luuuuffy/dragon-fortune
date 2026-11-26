@@ -28,7 +28,7 @@ const { won, bonusWon, components, triggers, hits, lineHits, jackpotCounts, jack
   freeWon, freeZeroPayouts, paidLanternCounts, freeLanternCounts } =
   simulate({ spins, denominationSen, bet, lines, seed, legacy })
 const percent = (ratio: number) => `${(100 * ratio).toFixed(6)}%`
-const expectedHold = expectedHoldPayout(denominationSen, bet, legacy)
+const expectedHold = expectedHoldPayout({ denominationSen, bet, betSize: legacy ? 1 : betting.betSize }, legacy)
 const version = legacy ? 2 : undefined
 const paidOrbChance = boardOrbChance(false, version)
 const modeledEntry = bonusEntryChance(CELLS, paidOrbChance)

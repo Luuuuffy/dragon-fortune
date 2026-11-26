@@ -32,6 +32,7 @@ export const spinJackpots = (spin: Pick<Spin, 'jackpotPrizes' | 'bet'>) =>
 const spinOrbWager = (spin: Spin): OrbWager => ({
   denominationSen: spin.betting?.denominationSen ?? 1,
   bet: spin.bet,
+  betSize: spin.betting?.betSize ?? 1,
   legacyBetSize: (spin.paytableVersion ?? 1) < CREDIT_PAYTABLE_VERSION ? spin.betting?.betSize ?? 1 : undefined,
   paytableVersion: spin.paytableVersion ?? 1,
   jackpotPrizes: spinJackpots(spin),

@@ -3,19 +3,22 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import {
   BALANCED_BONUS_VERSION, BET_SIZES, BONUS_REBALANCE_VERSION, CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION,
   LINE_OPTIONS, PAYLINES, LINE_CREDITS,
-  EARLY_RESPIN_VERSION, LATE_RESPIN_VERSION, MATCHED_LANTERN_VERSION, ORB_VARIETY_VERSION, RICH_BONUS_VERSION,
+  EARLY_RESPIN_VERSION, JACKPOT_BOOST_VERSION, JACKPOT_TRIAL_VERSION, LATE_ORB_SPLIT_VERSION, LATE_RESPIN_VERSION,
+  MATCHED_LANTERN_VERSION, ORB_VARIETY_VERSION,
+  RICH_BONUS_VERSION,
   calculateJackpots, totalBetSen, wagerCredits,
 } from '../src/game/config'
 import { BONUS } from '../src/game/bonusConfig'
 import { LANTERN } from '../src/game/lanternConfig'
 import { REEL_SYMBOL_WEIGHTS, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS, NON_ORB_WEIGHT, DESIGN_B_ORB_TYPES,
   BALANCED_BONUS_FREE_CHANCE, BALANCED_BONUS_HIGH_MIX_BPS, BALANCED_BONUS_HIGH_WEIGHTS, BALANCED_BONUS_LOW_WEIGHTS,
-  BALANCED_BONUS_MINIMUM_MIX_BPS, BALANCED_BONUS_ORB_TYPES, CURRENT_FREE_LANTERN_COUNT_WEIGHTS, CURRENT_LANTERN_WEIGHT,
+  BALANCED_BONUS_MINIMUM_MIX_BPS, BALANCED_BONUS_ORB_TYPES, BALANCED_BONUS_RESPIN_RATES, CURRENT_FREE_LANTERN_COUNT_WEIGHTS,
+  CURRENT_LANTERN_WEIGHT, ORDINARY_ORB_SPLIT_WAGER,
   LOW_ORB_WEIGHTS, HIGH_ORB_WEIGHTS, ORB_HIGH_MIX_BPS, BONUS_REBALANCE_WILD_WEIGHTS, BONUS_REBALANCE_ORB_TYPES,
   BONUS_REBALANCE_LOW_WEIGHTS, BONUS_REBALANCE_HIGH_WEIGHTS, BONUS_REBALANCE_HIGH_MIX_BPS, BONUS_REBALANCE_RESPIN_RATES,
   CURRENT_ORB_TYPES, CURRENT_LOW_ORB_WEIGHTS, CURRENT_HIGH_ORB_WEIGHTS, CURRENT_ORB_HIGH_MIX_BPS, CURRENT_ORB_MULTIPLIERS,
   BONUS_REBALANCE_FREE_ORB_CHANCE, CURRENT_FREE_WILD_WEIGHTS, CURRENT_RESPIN_RATES, EARLY_RESPIN_HIGH_MIX_BPS, EARLY_RESPIN_RATES, FREE_ORB_CHANCE,
-  LATE_RESPIN_HIGH_MIX_BPS, LATE_RESPIN_MINIMUM_MIX_BPS, LATE_RESPIN_RATES, MINIMUM_WAGER_ORB_HIGH_MIX_BPS,
+  JACKPOT_BOOST_ORB_TYPES, LATE_RESPIN_HIGH_MIX_BPS, LATE_RESPIN_MINIMUM_MIX_BPS, LATE_RESPIN_RATES, MINIMUM_WAGER_ORB_HIGH_MIX_BPS,
   ORB_VARIETY_HIGH_MIX_BPS, ORB_VARIETY_HIGH_WEIGHTS, ORB_VARIETY_LOW_WEIGHTS, ORB_VARIETY_MULTIPLIERS, ORB_VARIETY_PAID_ORB_CHANCE,
   ORB_VARIETY_TYPES, PAID_ORB_CHANCE, RICH_BONUS_FREE_CHANCE, RICH_BONUS_HIGH_MIX_BPS, RICH_BONUS_HIGH_WEIGHTS,
   RICH_BONUS_LOW_WEIGHTS, RICH_BONUS_MINIMUM_MIX_BPS, RICH_BONUS_PAID_CHANCE, RICH_BONUS_RESPIN_RATES,
@@ -44,12 +47,18 @@ const versionFlags = {
   '--profile-9': RICH_BONUS_VERSION,
   '--profile-10': BALANCED_BONUS_VERSION,
   '--profile-11': MATCHED_LANTERN_VERSION,
+  '--profile-12': JACKPOT_BOOST_VERSION,
+  '--profile-13': JACKPOT_TRIAL_VERSION,
+  '--profile-14': LATE_ORB_SPLIT_VERSION,
 } as const
 const versionFlag = Object.keys(versionFlags).find(flag => process.argv.includes(flag)) as keyof typeof versionFlags | undefined
 const version = versionFlag ? versionFlags[versionFlag] : CURRENT_MATH_VERSION
 const designB = version === DESIGN_B_VERSION
 const current = version >= MATCHED_LANTERN_VERSION
-const increasedJackpots = version === CURRENT_MATH_VERSION
+const jackpotTrial = version >= JACKPOT_TRIAL_VERSION
+const splitOrbProfile = version >= LATE_ORB_SPLIT_VERSION
+const lineIndependentOrbs = version === CURRENT_MATH_VERSION
+const increasedJackpots = version >= JACKPOT_BOOST_VERSION
 const balancedBonus = version === BALANCED_BONUS_VERSION
 const richBonus = version === RICH_BONUS_VERSION
 const expandedOrbs = version >= ORB_VARIETY_VERSION
@@ -67,8 +76,11 @@ const respinRates = {
   [EARLY_RESPIN_VERSION]: EARLY_RESPIN_RATES,
   [LATE_RESPIN_VERSION]: LATE_RESPIN_RATES,
   [RICH_BONUS_VERSION]: RICH_BONUS_RESPIN_RATES,
-  [BALANCED_BONUS_VERSION]: CURRENT_RESPIN_RATES,
-  [MATCHED_LANTERN_VERSION]: CURRENT_RESPIN_RATES,
+  [BALANCED_BONUS_VERSION]: BALANCED_BONUS_RESPIN_RATES,
+  [MATCHED_LANTERN_VERSION]: BALANCED_BONUS_RESPIN_RATES,
+  [JACKPOT_BOOST_VERSION]: BALANCED_BONUS_RESPIN_RATES,
+  [JACKPOT_TRIAL_VERSION]: BALANCED_BONUS_RESPIN_RATES,
+  [LATE_ORB_SPLIT_VERSION]: CURRENT_RESPIN_RATES,
   [CURRENT_MATH_VERSION]: CURRENT_RESPIN_RATES,
 }[version]
 const wildWeights = version >= BALANCED_BONUS_VERSION ? { paid: BONUS_REBALANCE_WILD_WEIGHTS.paid, free: CURRENT_FREE_WILD_WEIGHTS }
@@ -282,9 +294,10 @@ for (let step = 0; step < 40; step++) {
 const freeFeatureWithHold = 1 - noHoldBranch ** LANTERN.initialSpins
 if (richBonus) assert(Math.abs(freeFeatureWithHold - 1 / 3) < 0.00001)
 if (current) assert(Math.abs(holdEntry - 1 / 50) < 0.0001, 'Expected Hold & Spin on about one in 50 paid spins')
-const typeWeights = increasedJackpots ? CURRENT_ORB_TYPES : version >= BALANCED_BONUS_VERSION ? BALANCED_BONUS_ORB_TYPES
+const typeWeights = jackpotTrial ? CURRENT_ORB_TYPES : increasedJackpots ? JACKPOT_BOOST_ORB_TYPES
+  : version >= BALANCED_BONUS_VERSION ? BALANCED_BONUS_ORB_TYPES
   : expandedOrbs ? ORB_VARIETY_TYPES : designB ? DESIGN_B_ORB_TYPES : BONUS_REBALANCE_ORB_TYPES
-if (increasedJackpots) {
+if (version === JACKPOT_BOOST_VERSION) {
   for (const tier of ['mini', 'minor', 'major'] as const) {
     assert(Math.abs(typeWeights[tier] - BALANCED_BONUS_ORB_TYPES[tier] * 1.1) < 1e-12)
   }
@@ -334,20 +347,25 @@ const publishedMix = {
   [RICH_BONUS_VERSION]: RICH_BONUS_HIGH_MIX_BPS,
   [BALANCED_BONUS_VERSION]: BALANCED_BONUS_HIGH_MIX_BPS,
   [MATCHED_LANTERN_VERSION]: CURRENT_ORB_HIGH_MIX_BPS,
+  [JACKPOT_BOOST_VERSION]: CURRENT_ORB_HIGH_MIX_BPS,
+  [JACKPOT_TRIAL_VERSION]: CURRENT_ORB_HIGH_MIX_BPS,
+  [LATE_ORB_SPLIT_VERSION]: CURRENT_ORB_HIGH_MIX_BPS,
   [CURRENT_MATH_VERSION]: CURRENT_ORB_HIGH_MIX_BPS,
 }[version]
 const average = (weights: readonly number[]) => mean(multipliers.map((multiplier, i) => [multiplier, weights[i]]))
 const minimumCredits = BET_SIZES[0] * LINE_OPTIONS[0]
 const minimumDenomination = DENOMINATIONS_SEN[0]
 const rows = wagers.map(({ fixed, ...wager }) => {
-  const { denominationSen, bet, totalCredits } = wager
-  const separateMinimum = version >= LATE_RESPIN_VERSION && totalCredits === minimumCredits
+  const { denominationSen, bet, betSize, totalCredits } = wager
+  const orbBet = lineIndependentOrbs ? denominationSen * betSize * LINE_OPTIONS[0] : bet
+  const orbCredits = orbBet / denominationSen
+  const separateMinimum = version >= LATE_RESPIN_VERSION && orbCredits === minimumCredits
   const minimumWager = separateMinimum && denominationSen === minimumDenomination
   const minimumMix = current ? MINIMUM_WAGER_ORB_HIGH_MIX_BPS : balancedBonus ? BALANCED_BONUS_MINIMUM_MIX_BPS
     : richBonus ? RICH_BONUS_MINIMUM_MIX_BPS : LATE_RESPIN_MINIMUM_MIX_BPS
-  const mix = minimumWager ? minimumMix : publishedMix[totalCredits]
+  const mix = minimumWager ? minimumMix : publishedMix[orbCredits]
   assert(mix !== undefined)
-  // Profile 12 reuses profile 11's ordinary multipliers with updated jackpot odds.
+  // The recent profiles use profile 11's mix as the basis for ordinary multipliers.
   if (!increasedJackpots) {
     const fixedReturns = wagers.filter(row => row.totalCredits === totalCredits &&
       (!separateMinimum || (row.denominationSen === minimumDenomination) === minimumWager))
@@ -359,21 +377,30 @@ const rows = wagers.map(({ fixed, ...wager }) => {
       (Math.min(...fixedReturns) + Math.max(...fixedReturns)) / 2)) / (nOrbs * types.ordinary)
     assert.equal(mix, Math.round(10_000 * (targetMean - average(low)) / (average(high) - average(low))))
   }
-  const weights = orbWeightsForWager({ denominationSen, bet, paytableVersion: version })
+  const weights = orbWeightsForWager({ denominationSen, bet, betSize, paytableVersion: version })
   assert.equal(weights.length, multipliers.length)
+  const baseWeights = multipliers.map((_, index) => (low[index] * (1 - mix / 10_000) + high[index] * mix / 10_000))
+  const split = splitOrbProfile && denominationSen === ORDINARY_ORB_SPLIT_WAGER.denominationSen && orbBet === ORDINARY_ORB_SPLIT_WAGER.bet
+  const lowTotal = sum(baseWeights.filter((_, index) => multipliers[index] <= 4))
+  const highTotal = sum(baseWeights.filter((_, index) => multipliers[index] > 4))
   weights.forEach(([multiplier, weight], index) => {
     assert.equal(multiplier, multipliers[index])
     assert(weight > 0)
-    assert(Math.abs(weight - (low[index] * (1 - mix / 10_000) + high[index] * mix / 10_000)) < 1e-10)
+    let expectedWeight = baseWeights[index]
+    if (split) expectedWeight *= multiplier <= 4
+      ? 100 * ORDINARY_ORB_SPLIT_WAGER.lowerShare / lowTotal : 100 * (1 - ORDINARY_ORB_SPLIT_WAGER.lowerShare) / highTotal
+    assert(Math.abs(weight - expectedWeight) < 1e-10)
   })
-  const components = { ...fixed, ordinary: nOrbs * types.ordinary * mean(weights) }
-  const expected = expectedHoldPayout(denominationSen, bet, false, BONUS.grandAddsToOrbs, version)
+  const components = { ...fixed, ordinary: nOrbs * types.ordinary * mean(weights) * orbBet / bet }
+  const expected = expectedHoldPayout(wager, false, BONUS.grandAddsToOrbs, version)
   assert(Math.abs(expected.ordinaryOrbs / bet - components.ordinary) < 1e-11)
   for (const tier of ['mini', 'minor', 'major', 'grand'] as const) {
     assert(Math.abs(expected.jackpotPayouts[tier] / bet - components[tier]) < 1e-11)
   }
   const rtp = sum(Object.values(components))
-  assert(version >= RICH_BONUS_VERSION ? rtp < 1 : rtp >= 0.91 && rtp <= 0.93)
+  // The jackpot trial reports the resulting RTP without rebalancing it to a cap.
+  assert(jackpotTrial ? Number.isFinite(rtp) && rtp > 0
+    : version >= RICH_BONUS_VERSION ? rtp < 1 : rtp >= 0.91 && rtp <= 0.93)
   return { ...wager, components, rtp }
 })
 
@@ -425,7 +452,11 @@ const benchmark = {
   chanceOrbAtLeast8x: sum(benchmarkWeights.filter(([multiplier]) => multiplier >= 8).map(([, weight]) => weight)) / totalOrbWeight,
 }
 if (richBonus) assert(benchmark.medianPayoutSen >= 2500 && benchmark.chanceOrbAtLeast4x > 0.44)
-if (current) assert(benchmark.chance1xOrb > 0.45, 'Expected 1× to be a common ordinary Gold Orb')
+if (current && !splitOrbProfile) assert(benchmark.chance1xOrb > 0.45, 'Expected 1× to be a common ordinary Gold Orb')
+if (splitOrbProfile) {
+  const lowerShare = sum(benchmarkWeights.filter(([multiplier]) => multiplier <= 4).map(([, weight]) => weight)) / totalOrbWeight
+  assert(Math.abs(lowerShare - ORDINARY_ORB_SPLIT_WAGER.lowerShare) < 1e-10)
+}
 if (current) assert(benchmark.chanceOrbAtLeast4x > 0.15, 'Expected more frequent 4× and higher ordinary Gold Orbs')
 const sixOrbEndings = endCounts(6, BONUS.respins)
 const sixOrbEndsAtNineOrTen = sum(sixOrbEndings.slice(9, 11))

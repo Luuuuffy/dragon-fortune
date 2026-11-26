@@ -32,7 +32,7 @@ function reeled(session: Session, scenario?: Scenario) {
   if (round.phase !== 'SPINNING') throw new Error('Expected spinning reels')
   const board = scenario ? generateBoard(noHits, scenario, Boolean(session.freeSpins)) : round.spin.board
   const current = scenario ? { ...session, round: { ...round, spin: { ...round.spin, board },
-    orbs: startingOrbs(board, noHits, { denominationSen: 10, bet: wager, jackpotPrizes }, scenario) } } : session
+    orbs: startingOrbs(board, noHits, { denominationSen: 10, bet: wager, betSize: 1, jackpotPrizes }, scenario) } } : session
   return revealSpin(current, round.spin.id)
 }
 

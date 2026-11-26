@@ -1,6 +1,6 @@
 import {
   BALANCED_BONUS_VERSION, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS, CURRENT_MATH_VERSION,
-  DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_TIERS, LEGACY_SYMBOLS, LINE_CREDITS, MATCHED_LANTERN_VERSION,
+  DEFAULT_BETTING, DESIGN_B_VERSION, JACKPOT_BOOST_VERSION, JACKPOT_TIERS, JACKPOT_TRIAL_VERSION, LEGACY_SYMBOLS, LINE_CREDITS, MATCHED_LANTERN_VERSION,
   ORB_VARIETY_VERSION, RICH_BONUS_VERSION,
   PAYLINES, REELS, ROWS, SYMBOLS, cellAt, totalBetSen,
 } from './config'
@@ -8,11 +8,11 @@ import { BONUS, binomial, respinLandingChance } from './bonusConfig'
 import { LANTERN, LEGACY_LANTERN_PAYOUTS } from './lanternConfig'
 import { BALANCED_BONUS_FREE_CHANCE, BALANCED_BONUS_ORB_TYPES, BONUS_REBALANCE_FREE_ORB_CHANCE, BONUS_REBALANCE_ORB_TYPES, BONUS_REBALANCE_WILD_WEIGHTS,
   CREDIT_V3_FREE_WEIGHTS, CREDIT_V3_WILD_WEIGHTS, CURRENT_FREE_LANTERN_COUNT_WEIGHTS, CURRENT_FREE_WILD_WEIGHTS,
-  CURRENT_LANTERN_WEIGHT, CURRENT_ORB_TYPES, DESIGN_B_ORB_TYPES,
+  CURRENT_LANTERN_WEIGHT, CURRENT_ORB_TYPES, DESIGN_B_ORB_TYPES, JACKPOT_BOOST_ORB_TYPES,
   FREE_ORB_CHANCE, NON_ORB_WEIGHT, ORB_VARIETY_PAID_ORB_CHANCE, ORB_VARIETY_TYPES, PAID_ORB_CHANCE,
   RICH_BONUS_FREE_CHANCE, RICH_BONUS_PAID_CHANCE,
   REEL_SYMBOL_WEIGHTS, REEL_WILD_ALLOWED, REGULAR_SYMBOL_ORDER, WILD_STACK_WEIGHTS } from './probabilityConfig'
-import { calculateOrbPrize, ordinaryOrbDistributions, orbMultiplierWeights, orbWeightsForWager, priceWagerOrb } from './orbPrizes'
+import { ordinaryOrbDistributions, orbMultiplierWeights, orbWeightsForWager, priceWagerOrb } from './orbPrizes'
 import type { Orb, OrbWager } from './orbPrizes'
 import type { Jackpot, JackpotPrizes, PaytableVersion, SymbolId } from './config'
 
@@ -256,11 +256,13 @@ function orbTypeTable(weights: Readonly<Record<typeof orbTypes[number], number>>
 const designBOrbTypes = orbTypeTable(DESIGN_B_ORB_TYPES)
 const rebalanceOrbTypes = orbTypeTable(BONUS_REBALANCE_ORB_TYPES)
 const currentOrbTypes = orbTypeTable(CURRENT_ORB_TYPES)
+const boostedOrbTypes = orbTypeTable(JACKPOT_BOOST_ORB_TYPES)
 const balancedBonusOrbTypes = orbTypeTable(BALANCED_BONUS_ORB_TYPES)
 const varietyOrbTypes = orbTypeTable(ORB_VARIETY_TYPES)
 const previousOrbTypes = orbTypeTable(BONUS.orbTypeWeights)
 function orbTypesForVersion(version: PaytableVersion = CURRENT_MATH_VERSION) {
-  if (version === CURRENT_MATH_VERSION) return currentOrbTypes
+  if (version >= JACKPOT_TRIAL_VERSION) return currentOrbTypes
+  if (version === JACKPOT_BOOST_VERSION) return boostedOrbTypes
   if (version >= BALANCED_BONUS_VERSION) return balancedBonusOrbTypes
   if (version >= ORB_VARIETY_VERSION) return varietyOrbTypes
   if (version === BONUS_REBALANCE_VERSION) return rebalanceOrbTypes
@@ -274,9 +276,10 @@ export const sampleBoard = (): SymbolId[] => [
 ]
 
 // The showroom board and old saves without stored face values use a fixed sample.
-export const sampleOrbs = (board: SymbolId[], betting = DEFAULT_BETTING): Slots =>
-  board.map(symbol => symbol === 'orb' ? calculateOrbPrize(betting.denominationSen,
-    totalBetSen(betting), orbMultiplierWeights[0][0]) : null)
+export function sampleOrbs(board: SymbolId[], betting = DEFAULT_BETTING): Slots {
+  const orb = priceWagerOrb({ ...betting, bet: totalBetSen(betting) }, orbMultiplierWeights[0][0])
+  return board.map(symbol => symbol === 'orb' ? orb : null)
+}
 
 export function generateBoard(rng: Random, scenario?: Scenario, free = false, version: PaytableVersion = CURRENT_MATH_VERSION): SymbolId[] {
   const freeSymbols = free && version >= CREDIT_PAYTABLE_VERSION

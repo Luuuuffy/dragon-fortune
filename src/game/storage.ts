@@ -3,7 +3,7 @@ import { BET_SIZES, CELLS, CREDIT_PAYTABLE_VERSION, CURRENT_MATH_VERSION, DENOMI
 import { BONUS } from './bonusConfig'
 import { LANTERN } from './lanternConfig'
 import { SCENARIOS, evaluateScatter, sampleOrbs } from './engine'
-import { MAX_STORED_ORB_PAYOUT } from './orbPrizes'
+import { MAX_STORED_ORB_PAYOUT, ordinaryOrbBaseBet } from './orbPrizes'
 import type { Orb } from './orbPrizes'
 import { DEFAULT_SETTINGS, freeSpinsWin, jackpotTotal, knownSymbol, newSession, validBetting } from './session'
 import type { Betting, Jackpot, JackpotPrizes, SymbolId } from './config'
@@ -47,12 +47,15 @@ const wagerPricedProfile = (version: unknown) => integer(version, CREDIT_PAYTABL
 function pricedFor(orbs: (RecordValue | null)[], spin: RecordValue, version: number) {
   if (version < 5) return true
   const denomination = spinDenomination(spin)
+  const orbBet = spin.paytableVersion === CURRENT_MATH_VERSION ? ordinaryOrbBaseBet({
+    denominationSen: denomination, bet: spin.bet as number, betSize: (spin.betting as Betting).betSize,
+  }) : spin.bet as number
   return orbs.every(orb => {
     if (!orb) return true
     if (specialTier(orb.tier)) return orb.payoutSen === storedPrizes(spin)[orb.tier]
     if (orb.payoutSen !== (orb.value as number) * denomination) return false
     return !wagerPricedProfile(spin.paytableVersion) || (integer(orb.multiplier, 1) &&
-      orb.payoutSen === (spin.bet as number) * orb.multiplier && Boolean(orb.displayMyr) === (denomination >= 100))
+      orb.payoutSen === orbBet * orb.multiplier && Boolean(orb.displayMyr) === (denomination >= 100))
   })
 }
 const lineWins = (lines: unknown) => Array.isArray(lines) && lines.length <= PAYLINES.length && lines.every(win =>
