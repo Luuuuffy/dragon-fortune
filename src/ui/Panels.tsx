@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
-import { BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS,
+import { BALANCED_BONUS_VERSION, BET_SIZES, BONUS_REBALANCE_VERSION, CELLS, CREDIT_PAYTABLE_VERSION, CREDIT_V3_LINE_AWARDS,
   CURRENT_MATH_VERSION, DENOMINATIONS_SEN, DESIGN_B_VERSION, EARLY_RESPIN_VERSION, JACKPOT_TIERS, LATE_RESPIN_VERSION,
-  ORB_VARIETY_VERSION, RICH_BONUS_VERSION,
+  MATCHED_LANTERN_VERSION, ORB_VARIETY_VERSION, RICH_BONUS_VERSION,
   LINE_CREDITS, LINE_OPTIONS, PAYLINES, SYMBOLS, betPerLineSen, calculateJackpots, denominationLabel, money, totalBetSen,
   wagerCredits } from '../game/config'
 import { BONUS, bonusEntryChance, respinRates } from '../game/bonusConfig'
@@ -72,7 +72,9 @@ const theoreticalRtp = {
   [EARLY_RESPIN_VERSION]: '91.00–93.00%',
   [LATE_RESPIN_VERSION]: '91.28–92.72%',
   [RICH_BONUS_VERSION]: '97.60–99.40%',
-  [CURRENT_MATH_VERSION]: '93.52–97.99%',
+  [BALANCED_BONUS_VERSION]: '93.52–97.99%',
+  [MATCHED_LANTERN_VERSION]: '94.84–99.16%',
+  [CURRENT_MATH_VERSION]: '95.13–99.81%',
 }
 
 function Paytable({ betting, version, prizes }: { betting: Betting; version: PaytableVersion; prizes: JackpotPrizes }) {
@@ -103,7 +105,8 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
     <h3>Red Lantern Scatter</h3>
     <p>Each reel can show one Lantern. A paid trigger starts {LANTERN.initialSpins} automatic Free Spins.
       A qualifying Free Spin awards {LANTERN.extraSpins} more. Chicken, Boat, Lotus and Tiger are the paying symbols in Free Spins.</p>
-    {version === CURRENT_MATH_VERSION && <p>About 28% of complete Lantern features lead to Hold &amp; Spin, including retriggers.</p>}
+    {version >= MATCHED_LANTERN_VERSION && <p>Three or more Lanterns land on 2.20% of both paid spins and Free Spins.</p>}
+    {version === BALANCED_BONUS_VERSION && <p>About 28% of complete Lantern features lead to Hold &amp; Spin, including retriggers.</p>}
     {version === RICH_BONUS_VERSION && <p>About one in three complete Lantern features leads to Hold &amp; Spin, including retriggers.</p>}
     <ul className="orb-values">
       {([3, 4, 5] as const).map(count => <li key={count}><b>{count} Lanterns</b> {LANTERN.payouts[count]}× total bet · {money(bet * LANTERN.payouts[count])}</li>)}

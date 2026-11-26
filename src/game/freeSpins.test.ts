@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, REELS, ROWS,
+import { BALANCED_BONUS_VERSION, BONUS_REBALANCE_VERSION, CELLS, CURRENT_MATH_VERSION, DESIGN_B_VERSION, REELS, ROWS,
   START_BALANCE, calculateJackpots, cellAt } from './config'
 import type { SymbolId } from './config'
 import { evaluateLines, evaluateScatter, generateBoard, lanternCountOdds, lanternReels, seededRandom, startingOrbs,
   triggersBonus } from './engine'
 import type { Scenario } from './engine'
 import { LANTERN } from './lanternConfig'
-import { CURRENT_FREE_WILD_WEIGHTS, FREE_ORB_CHANCE, REEL_SYMBOL_WEIGHTS } from './probabilityConfig'
+import { CURRENT_FREE_LANTERN_COUNT_WEIGHTS, CURRENT_FREE_WILD_WEIGHTS, CURRENT_LANTERN_WEIGHT, FREE_ORB_CHANCE,
+  REEL_SYMBOL_WEIGHTS } from './probabilityConfig'
 import { completeHoldCollection, dismissResult, freeSpinsWin, lastWinSen, newSession, openBonus, resetGame, revealRespin,
   revealSpin, selectBetting, setBankroll, startRespin, startSpin } from './session'
 import type { Session } from './session'
@@ -88,11 +89,20 @@ describe('Red Lantern scatter', () => {
     const modeledRetrigger = lanternCountOdds(true).slice(3).reduce((sum, chance) => sum + chance, 0)
     expect(Math.abs(sim.lanternTriggers / sim.spins - modeled)).toBeLessThan(0.002)
     expect(Math.abs(sim.freeRetriggers / sim.freePlayed - modeledRetrigger)).toBeLessThan(0.012)
-    expect(Math.abs(sim.freeHoldTriggers / sim.freePlayed - 0.04903)).toBeLessThan(0.01)
-    expect(Math.abs(sim.freeFeaturesWithHold / sim.lanternTriggers - 0.2793)).toBeLessThan(0.05)
+    expect(Math.abs(sim.freeHoldTriggers / sim.freePlayed - 0.03328)).toBeLessThan(0.01)
+    expect(Math.abs(sim.freeFeaturesWithHold / sim.lanternTriggers - 0.19506)).toBeLessThan(0.05)
     expect(sim.freeLineHits / sim.freePlayed).toBeGreaterThan(sim.lineHits / sim.spins)
     expect(sim.freePlayed).toBe(sim.lanternTriggers * LANTERN.initialSpins + sim.freeRetriggers * LANTERN.extraSpins)
     expect(sim.freeWon).toBeGreaterThan(0)
+  })
+
+  it('raises paid Lantern triggers and matches the entire paid and Free Spins count distribution', () => {
+    const paid = lanternCountOdds(false)
+    const free = lanternCountOdds(true)
+    const previousPaid = lanternCountOdds(false, BALANCED_BONUS_VERSION)
+    expect(paid.slice(3).reduce((sum, chance) => sum + chance, 0)).toBeCloseTo(0.02204, 5)
+    expect(paid[3]).toBeGreaterThan(previousPaid[3])
+    free.forEach((chance, count) => expect(chance).toBeCloseTo(paid[count], 11))
   })
 
   it('supports independent Lantern tier weights while retaining the original Gold Orb draws', () => {
@@ -111,7 +121,7 @@ describe('Red Lantern scatter', () => {
   })
 
   it('adds Free Spin orbs without changing natural triggers or moving Lanterns', () => {
-    const drawOriginal = lanternReels(LANTERN.freeWeight, LANTERN.freeTierWeights,
+    const drawOriginal = lanternReels(CURRENT_LANTERN_WEIGHT, CURRENT_FREE_LANTERN_COUNT_WEIGHTS,
       CURRENT_FREE_WILD_WEIGHTS, REEL_SYMBOL_WEIGHTS.free, FREE_ORB_CHANCE).drawBoard
     const rng = seededRandom(2526)
     let extraOrbs = 0
@@ -134,7 +144,7 @@ describe('Red Lantern scatter', () => {
 
     expect(extraOrbs).toBeGreaterThan(2_000)
     expect(extraOrbs).toBeLessThan(4_000)
-    expect(naturalTriggers).toBeGreaterThan(previousTriggers * 1.8)
+    expect(naturalTriggers).toBeGreaterThan(previousTriggers * 1.4)
   })
 
   it.each([{ free: false, minimumFullReelRate: 0.03 }, { free: true, minimumFullReelRate: 0.045 }])(

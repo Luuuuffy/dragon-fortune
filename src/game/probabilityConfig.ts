@@ -23,6 +23,11 @@ export const LANTERN_PROBABILITY = {
   paidTierWeights: [1, 1, 1],
   freeTierWeights: [1, 1, 1],
 } as const
+export const CURRENT_LANTERN_WEIGHT = 4.4
+// Relative weights for 0–5 Lanterns, adjusted for the Free Spin orb density.
+export const CURRENT_FREE_LANTERN_COUNT_WEIGHTS = [
+  1, 1.023320341848, 1.047184510540, 1.071603084968, 1.096391006926, 1.126548798858,
+] as const
 
 // Relative weights for requesting 0, 1, 2, or 3 adjacent Panda Wilds on a reel.
 export const CREDIT_V3_WILD_WEIGHTS = {
@@ -43,7 +48,8 @@ export const CURRENT_FREE_WILD_WEIGHTS = [78.5, 13.5, 5, 3] as const
 export const DESIGN_B_ORB_TYPES = { ordinary: 99.86799, mini: 0.12, minor: 0.012, major: 0.00001 } as const
 export const BONUS_REBALANCE_ORB_TYPES = { ordinary: 99.88999, mini: 0.10, minor: 0.01, major: 0.00001 } as const
 export const ORB_VARIETY_TYPES = { ordinary: 99.98349, mini: 0.015, minor: 0.0015, major: 0.00001 } as const
-export const CURRENT_ORB_TYPES = { ordinary: 99.96699, mini: 0.03, minor: 0.003, major: 0.00001 } as const
+export const BALANCED_BONUS_ORB_TYPES = { ordinary: 99.96699, mini: 0.03, minor: 0.003, major: 0.00001 } as const
+export const CURRENT_ORB_TYPES = { ordinary: 99.963689, mini: 0.033, minor: 0.0033, major: 0.000011 } as const
 
 // Design B's published schedule. The high distribution is blended in these basis points.
 export const ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
@@ -64,13 +70,16 @@ export const BONUS_REBALANCE_HIGH_MIX_BPS: Readonly<Partial<Record<number, numbe
   380: 8162, 440: 8050, 580: 8098, 880: 8116,
 }
 
-export const CURRENT_ORB_MULTIPLIERS = [1, 2, 3, 4, 5, 8, 10, 20, 50, 100, 200] as const
+export const ORB_VARIETY_MULTIPLIERS = [1, 2, 3, 4, 5, 8, 10, 20, 50, 100, 200] as const
+export const CURRENT_ORB_MULTIPLIERS = [1, 2, 3, 4, 5, 6, 8, 10, 20, 50, 100, 200] as const
 export const ORB_VARIETY_LOW_WEIGHTS = [53, 29, 9, 6, 2, 0.72, 0.23, 0.04, 0.008, 0.0015, 0.0005] as const
 export const ORB_VARIETY_HIGH_WEIGHTS = [26, 36, 19, 13, 4, 1.4, 0.48, 0.09, 0.026, 0.003, 0.001] as const
 export const RICH_BONUS_LOW_WEIGHTS = [25, 20, 21, 16, 13, 3.5, 1.25, 0.2, 0.04, 0.009, 0.001] as const
 export const RICH_BONUS_HIGH_WEIGHTS = [11, 14, 15, 23, 24, 9, 3.45, 0.46, 0.075, 0.013, 0.002] as const
-export const CURRENT_LOW_ORB_WEIGHTS = [76, 15, 5, 2, 1.45, 0.35, 0.15, 0.04, 0.008, 0.0015, 0.0005] as const
-export const CURRENT_HIGH_ORB_WEIGHTS = [31, 30, 20, 9, 7, 1.9, 0.82, 0.23, 0.045, 0.004, 0.001] as const
+export const BALANCED_BONUS_LOW_WEIGHTS = [76, 15, 5, 2, 1.45, 0.35, 0.15, 0.04, 0.008, 0.0015, 0.0005] as const
+export const BALANCED_BONUS_HIGH_WEIGHTS = [31, 30, 20, 9, 7, 1.9, 0.82, 0.23, 0.045, 0.004, 0.001] as const
+export const CURRENT_LOW_ORB_WEIGHTS = [66.6, 19.7, 3.2, 7.55, 1.7, 0.8, 0.25, 0.16, 0.03, 0.008, 0.0015, 0.0005] as const
+export const CURRENT_HIGH_ORB_WEIGHTS = [26.6, 29.7, 23.2, 17.55, 1.7, 0.8, 0.25, 0.16, 0.03, 0.008, 0.0015, 0.0005] as const
 // Center the RTP range at 92% among wagers with the same total credits.
 export const ORB_VARIETY_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
   8: 2469, 16: 3754, 18: 3736, 24: 4183, 36: 4307, 38: 4521, 40: 4526,
@@ -98,22 +107,31 @@ export const RICH_BONUS_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> 
   380: 5602, 440: 5387, 580: 5424, 880: 5407,
 }
 // The midpoint of each credit group's theoretical return is 95.75%.
-export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+export const BALANCED_BONUS_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
   8: 6522, 16: 7711, 18: 7832, 24: 8398, 36: 8749, 38: 8920, 40: 8949,
   54: 9055, 58: 9094, 76: 9355, 80: 9361, 88: 9270, 90: 9299, 114: 9500,
   116: 9379, 174: 9473, 176: 9458, 180: 9483, 190: 9616, 264: 9520, 290: 9549,
   380: 9702, 440: 9570, 580: 9606, 880: 9608,
 }
+// The midpoint of each credit group's theoretical return is 97%.
+export const CURRENT_ORB_HIGH_MIX_BPS: Readonly<Partial<Record<number, number>>> = {
+  8: 4996, 16: 6643, 18: 6787, 24: 7596, 36: 8058, 38: 8323, 40: 8358,
+  54: 8481, 58: 8536, 76: 8925, 80: 8930, 88: 8775, 90: 8820, 114: 9125,
+  116: 8930, 174: 9061, 176: 9035, 180: 9074, 190: 9286, 264: 9122, 290: 9167,
+  380: 9406, 440: 9191, 580: 9245, 880: 9243,
+}
 // Fixed MYR jackpots account for more of the return at the minimum 1¢ × 1 × 8 wager.
 export const LATE_RESPIN_MINIMUM_MIX_BPS = 520
 export const RICH_BONUS_MINIMUM_MIX_BPS = 2450
-export const MINIMUM_WAGER_ORB_HIGH_MIX_BPS = 3906
+export const BALANCED_BONUS_MINIMUM_MIX_BPS = 3906
+export const MINIMUM_WAGER_ORB_HIGH_MIX_BPS = 1375
 export const ORB_VARIETY_PAID_ORB_CHANCE = 0.162
 export const BONUS_REBALANCE_FREE_ORB_CHANCE = 0.185
 export const RICH_BONUS_PAID_CHANCE = 0.132
 export const RICH_BONUS_FREE_CHANCE = 0.199605
 export const PAID_ORB_CHANCE = 0.1557
-export const FREE_ORB_CHANCE = 0.19
+export const BALANCED_BONUS_FREE_CHANCE = 0.19
+export const FREE_ORB_CHANCE = 0.174
 export const BONUS_REBALANCE_RESPIN_RATES = [[8, 0.091], [10, 0.043], [12, 0.01], [CELLS, 0.00105]] as const
 export const EARLY_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.01], [CELLS, 0.00105]] as const
 export const LATE_RESPIN_RATES = [[8, 0.105], [10, 0.044], [12, 0.02], [CELLS, 0.00105]] as const
