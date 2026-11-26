@@ -93,10 +93,8 @@ export function useRoundAnimation(session: Session, commit: (update: (s: Session
         }
       }
       reelCallback.current = { scope, stop }
-      // Recover if the browser cancels a CSS animation without delivering animationend.
-      schedule(duration[REELS - 1] + 350, () => {
-        for (let reel = 0; reel < REELS; reel++) stop(reel)
-      })
+      // Keep the fallback close to each reel's contact point if animationend is missed.
+      duration.forEach((ms, reel) => schedule(ms + 110, () => stop(reel)))
     }
     if (active.round.phase === 'BONUS_TRIGGER') {
       sound('trigger', { type: 'BONUS_TRIGGER' })

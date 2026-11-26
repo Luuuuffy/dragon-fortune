@@ -111,6 +111,11 @@ export function selectBetting(session: Session, selection: Partial<Betting>): Se
     ? { ...session, betting, boardOrbs: session.last ? session.boardOrbs : sampleOrbs(session.board, betting) } : session
 }
 
+export function selectDenomination(session: Session, denominationSen: number): Session {
+  if (session.betting.denominationSen === denominationSen) return session
+  return selectBetting(session, { denominationSen, betSize: DEFAULT_BETTING.betSize })
+}
+
 export function startSpin(session: Session, rng: Random, id: string, scenario?: Scenario): Session {
   const { betting, balance, stats } = session
   const bet = totalBetSen(betting)

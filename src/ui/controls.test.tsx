@@ -16,8 +16,8 @@ vi.mock('./useRoundAnimation', () => ({
   useRoundAnimation: () => ({ stopped: [], duration: [], landedSymbols: [], stoppedCells: [] }),
 }))
 
-it('renders each ordinary face number in the orb and keeps jackpot names', () => {
-  for (const [orb, face] of [[calculateOrbPrize(1, 100, 1), '100'], [calculateOrbPrize(50, 800, 100), '1,600'],
+it('renders the ordinary MYR award in the orb and keeps jackpot names', () => {
+  for (const [orb, face] of [[calculateOrbPrize(1, 8, 1), 'RM0.08'], [calculateOrbPrize(50, 800, 100), 'RM800'],
     [calculateOrbPrize(100, 800, 1), 'RM8'], [calculateOrbPrize(200, 1600, 1), 'RM16']] as const) {
     const markup = renderToStaticMarkup(<OrbSymbol orb={orb}/>)
     expect(markup).toContain(`aria-label="Gold orb ${face}"`)

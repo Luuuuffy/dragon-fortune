@@ -76,6 +76,7 @@ it('mutes the master bus immediately and schedules no new audible cues', async (
   unlockAudio()
   playRoundCue({ type: 'REEL_STOP', reel: 0 }, DEFAULT_SETTINGS)
   expect(createOscillator).toHaveBeenCalledTimes(2)
+  for (const { value } of createOscillator.mock.results) expect(value.start).toHaveBeenCalledWith(3)
   const muted = { ...DEFAULT_SETTINGS, muted: true }
   setAudio(muted)
   expect(createGain.mock.results[0].value.gain.setValueAtTime).toHaveBeenLastCalledWith(0, 3)
@@ -100,19 +101,18 @@ it('applies independent volume levels and skips oscillators for silenced categor
     .toHaveBeenCalledWith(784 * 1.1, 3)
 })
 
-it('plays distinct Lantern, trigger, retrigger, and completion motifs on the master bus', async () => {
+it('keeps distinct Free Spins entry, retrigger and completion melodies', async () => {
   const { playRoundCue, unlockAudio } = await import('./audio')
   unlockAudio()
-  playRoundCue({ type: 'LANTERN_LAND', position: 4 }, DEFAULT_SETTINGS)
   playRoundCue({ type: 'FREE_TRIGGER' }, DEFAULT_SETTINGS)
   playRoundCue({ type: 'FREE_RETRIGGER' }, DEFAULT_SETTINGS)
   playRoundCue({ type: 'FREE_COMPLETE' }, DEFAULT_SETTINGS)
-  expect(createOscillator).toHaveBeenCalledTimes(17)
-  expect([0, 2, 8, 12].map(index =>
+  expect(createOscillator).toHaveBeenCalledTimes(15)
+  expect([0, 6, 10].map(index =>
     createOscillator.mock.results[index].value.frequency.setValueAtTime.mock.lastCall?.[0]))
-    .toEqual([988, 330, 587, 784])
+    .toEqual([330, 587, 784])
   playRoundCue({ type: 'FREE_RETRIGGER' }, { ...DEFAULT_SETTINGS, muted: true })
-  expect(createOscillator).toHaveBeenCalledTimes(17)
+  expect(createOscillator).toHaveBeenCalledTimes(15)
 })
 
 it('loops one persistent track per mode, crossfades and resumes from the saved playhead', () => {

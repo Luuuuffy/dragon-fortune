@@ -7,7 +7,7 @@ import type { MusicMode } from './musicScore'
 
 const motifs = {
   spin: [196, 294, 392],
-  reel: [155, 220, 330, 220, 155, 196, 220],
+  reel: [155, 196, 220, 196],
   line: [523, 659, 784, 1047],
   trigger: [196, 294, 392, 523, 659, 784, 1047],
   reset: [523, 784, 1047],
@@ -132,7 +132,7 @@ export function play(name: keyof typeof motifs, settings: Settings) {
   const jackpot = name === 'mini' || name === 'minor' || name === 'major' || name === 'grand'
   if (jackpot && !settings.jackpotVolume) return
   const now = graph.context.currentTime
-  const pace = name === 'reel' ? 0.12 : name === 'grand' ? 0.14 : 0.085
+  const pace = name === 'reel' ? 0.055 : name === 'grand' ? 0.14 : 0.085
   if (jackpot) {
     graph.musicManager.duck(name === 'grand' ? 0.25 : 0.40, name === 'grand' ? 1.1 : 0.68)
     if (name === 'grand') {
@@ -142,7 +142,7 @@ export function play(name: keyof typeof motifs, settings: Settings) {
   }
   motifs[name].forEach((frequency, index) =>
     note(graph, jackpot ? graph.jackpot : graph.master, now + index * pace, frequency,
-      name === 'reel' ? 0.14 : 0.32, name === 'reel' ? 0.035 : 0.17, name === 'reel' ? 'triangle' : 'sine'))
+      name === 'reel' ? 0.065 : 0.32, name === 'reel' ? 0.035 : 0.17, name === 'reel' ? 'triangle' : 'sine'))
 }
 
 export function playCollectionCue(stage: 'lift' | 'arrive', settings: Settings, tier?: Jackpot) {
@@ -170,8 +170,9 @@ export function playRoundCue(cue: RoundCue, settings: Settings) {
   switch (cue.type) {
     case 'REEL_STOP':
       if (!settings.reelVolume) break
-      note(graph, graph.reel, now, 230, 0.105, 0.23, 'triangle', 0.004, 105)
-      note(graph, graph.reel, now + 0.004, 560, 0.032, 0.08, 'square', 0.002, 330)
+      // A short latch click and a low thud begin together at reel contact.
+      note(graph, graph.reel, now, 155 + cue.reel * 6, 0.07, 0.23, 'triangle', 0.003, 63)
+      note(graph, graph.reel, now, 880, 0.022, 0.055, 'square', 0.002, 390)
       break
     case 'GOLD_ORB_LAND':
       if (!settings.orbVolume) break
@@ -197,10 +198,6 @@ export function playRoundCue(cue: RoundCue, settings: Settings) {
         cue.tier === 'major' ? 0.24 : 0.15, 'triangle', 0.013, 56)
       jackpotOrbs[cue.tier].forEach((frequency, index) =>
         note(graph, graph.jackpot, now + index * 0.036, frequency, 0.125, 0.16, 'triangle'))
-      break
-    case 'LANTERN_LAND':
-      note(graph, graph.master, now, 988, 0.16, 0.10, 'triangle', 0.004)
-      note(graph, graph.master, now + 0.018, 1480, 0.14, 0.05, 'sine')
       break
     case 'FREE_TRIGGER': play('lanternTrigger', settings); break
     case 'FREE_RETRIGGER': play('lanternRetrigger', settings); break

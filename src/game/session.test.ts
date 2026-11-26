@@ -3,7 +3,7 @@ import { CELLS, calculateJackpots, cellAt, legacyJackpots, parseBankroll, START_
 import { calculateOrbPrize } from './orbPrizes'
 import type { Scenario } from './engine'
 import { completeHoldCollection, dismissResult, lastWinSen, newSession, openBonus, resetGame, resetStats, revealRespin, revealSpin,
-  selectBetting, setBankroll, startRespin, startSpin } from './session'
+  selectBetting, selectDenomination, setBankroll, startRespin, startSpin } from './session'
 import type { Session } from './session'
 import { parseSession } from './storage'
 
@@ -17,6 +17,18 @@ const reload = (state: Session) => {
 }
 
 describe('round transitions and persistence', () => {
+  it('resets Bet Size to one on a denomination change while preserving active lines', () => {
+    const selected = selectBetting(funded(), { betSize: 5, lines: 38 })
+    expect(selectDenomination(selected, 1)).toBe(selected)
+    const changed = reload(selectDenomination(selected, 10))
+    expect(changed.betting).toEqual({ denominationSen: 10, betSize: 1, lines: 38 })
+    expect(changed.stats).toEqual(selected.stats)
+    expect(changed.balance).toBe(selected.balance)
+    expect(changed.boardOrbs.find(Boolean)).toMatchObject({ value: 38, payoutSen: 380 })
+    const spinning = begin('none', changed)
+    expect(selectDenomination(spinning, 50)).toBe(spinning)
+  })
+
   it('deducts a wager and settles a line win only once across reloads and duplicate callbacks', () => {
     const selected = selectBetting(funded(), { denominationSen: 20, betSize: 3, lines: 8 })
     const active = reload(begin('line', selected))

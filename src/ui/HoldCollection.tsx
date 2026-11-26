@@ -125,7 +125,7 @@ export function HoldCollection({ field, orbs, result, complete, settings, reduce
       const { settings, reduced } = live.current
       elapsed += previous ? Math.min(90, time - previous) * settings.speed : 0
       previous = time
-      const travel = reduced ? 90 : prize.tier === 'grand' ? 1000 : prize.tier ? 650 : 455
+      const travel = reduced ? 90 : prize.tier === 'grand' ? 1320 : prize.tier ? 900 : 690
       const counting = reduced ? 90 : prize.tier === 'grand' ? 520 : 160
       if (!lifted) {
         lifted = true

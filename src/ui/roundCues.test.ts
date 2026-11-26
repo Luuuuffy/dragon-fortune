@@ -34,21 +34,17 @@ describe('reel and orb animation cues', () => {
     expect(events).toHaveLength(5)
   })
 
-  it.each([1, 3])('plays %i orb sounds at their respective visual reveals after the reel stop', count => {
+  it.each([1, 3])('reveals all %i orbs with the reel and plays one orb chime', count => {
     const { cues, events, visible } = timeline()
     const orbs = Array.from({ length: count }, (_, position) => ({ position }))
     cues.stop(0, orbs, vi.fn())
     cues.stop(0, orbs, vi.fn())
     vi.runAllTimers()
     const reveals = events.filter(event => event.cue.type === 'GOLD_ORB_LAND')
-    expect(reveals).toHaveLength(count)
+    expect(reveals).toHaveLength(1)
     expect(events[0].cue.type).toBe('REEL_STOP')
-    reveals.forEach(({ cue, time }, index) => {
-      if (cue.type !== 'GOLD_ORB_LAND') throw new Error('Expected orb cue')
-      expect(time).toBe(visible.get(cue.position))
-      expect(time).toBe(45 + index * 165)
-      expect(cue.pitch).toBeCloseTo(2 ** (index / 24))
-    })
+    expect(reveals[0].time).toBe(events[0].time)
+    expect([...visible.values()]).toEqual(Array(count).fill(events[0].time))
   })
 
   it.each(['mini', 'minor', 'major'] as const)('plays one additional %s accent for a newly revealed jackpot', tier => {
@@ -70,28 +66,38 @@ describe('reel and orb animation cues', () => {
     expect(reset.mock.results[0].value).toBeGreaterThan(events[2].time)
   })
 
-  it('keeps orb cues staggered when consecutive reels finish close together', () => {
+  it('keeps one chime in sync with each qualifying reel when stops are close together', () => {
     const { cues, events } = timeline()
     cues.stop(0, [{ position: 0 }, { position: 2 }], vi.fn())
     vi.advanceTimersByTime(80)
     cues.stop(1, [{ position: 4 }], vi.fn())
     vi.runAllTimers()
     expect(events.map(event => [event.time, event.cue.type])).toEqual([
-      [0, 'REEL_STOP'], [45, 'GOLD_ORB_LAND'], [80, 'REEL_STOP'],
-      [210, 'GOLD_ORB_LAND'], [375, 'GOLD_ORB_LAND'],
+      [0, 'REEL_STOP'], [0, 'GOLD_ORB_LAND'], [80, 'REEL_STOP'], [80, 'GOLD_ORB_LAND'],
     ])
   })
 
-  it('plays one Lantern cue on reveal while preserving reel stops and staggered Gold Orb sounds', () => {
+  it('reveals Lanterns at contact without their own sound', () => {
     const { cues, events, visible } = timeline()
     const symbols = [{ position: 0, lantern: true as const }, { position: 1 }, { position: 2, lantern: true as const }]
     cues.stop(0, symbols, vi.fn())
     cues.stop(0, symbols, vi.fn())
     vi.runAllTimers()
-    expect(events.map(({ cue }) => cue.type)).toEqual(['REEL_STOP', 'LANTERN_LAND', 'GOLD_ORB_LAND', 'LANTERN_LAND'])
-    expect(events[1].time).toBe(visible.get(0))
-    expect(events[2].time).toBe(visible.get(1))
-    expect(events[3].time).toBe(visible.get(2))
+    expect(events.map(({ cue }) => cue.type)).toEqual(['REEL_STOP', 'GOLD_ORB_LAND'])
+    expect([...visible.values()]).toEqual([0, 0, 0])
+  })
+
+  it.each([
+    { last: [{ position: 12 }, { position: 13 }, { position: 14 }], first: [{ position: 0 }, { position: 1 }], chimes: 1 },
+    { last: [{ position: 12 }, { position: 13 }, { position: 14 }], first: [{ position: 0 }, { position: 1 }, { position: 2 }], chimes: 2 },
+  ])('gates late orb sounds on the six-orb threshold ($chimes chimes)', ({ first, last, chimes }) => {
+    const { cues, events, visible } = timeline()
+    cues.stop(0, first, vi.fn())
+    for (let reel = 1; reel < 4; reel++) cues.stop(reel, [], vi.fn())
+    cues.stop(4, last, vi.fn())
+    expect(events.filter(({ cue }) => cue.type === 'GOLD_ORB_LAND')).toHaveLength(chimes)
+    expect(events.filter(({ cue }) => cue.type === 'REEL_STOP')).toHaveLength(5)
+    expect(visible.has(14)).toBe(true)
   })
 
   it('starts pitch at normal for each respin and caps the rise on a full board', () => {

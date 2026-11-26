@@ -1,3 +1,5 @@
+import { REELS, ROWS } from '../game/config'
+import { BONUS } from '../game/bonusConfig'
 import type { Orb } from '../game/engine'
 
 type OrbTier = Extract<Orb, { tier: unknown }>['tier']
@@ -7,7 +9,6 @@ export type RoundCue =
   | { type: 'REEL_STOP'; reel: number }
   | { type: 'GOLD_ORB_LAND'; position: number; pitch: number; impact?: true }
   | { type: 'JACKPOT_ORB_LAND'; position: number; tier: OrbTier }
-  | { type: 'LANTERN_LAND'; position: number }
   | { type: 'FREE_TRIGGER' | 'FREE_RETRIGGER' | 'FREE_COMPLETE' }
   | { type: 'RESPIN_RESET' }
   | { type: 'BONUS_TRIGGER' }
@@ -45,28 +46,22 @@ export function createRoundCues({
   let nextOrbAt = 0
   let revealEndsAt = 0
   let pitchStep = 0
+  let stoppedOrbs = 0
 
-  function land(symbols: SymbolLanding[], lead = 0) {
-    let at = Math.max(now() + lead, nextOrbAt)
+  function chime({ position, tier }: OrbLanding) {
+    const pitch = 2 ** (Math.min(pitchStep++, 6) / 24)
+    emit({ type: 'GOLD_ORB_LAND', position, pitch, ...(holdAndSpin || tier ? { impact: true } : {}) })
+    if (tier) schedule(155, () => emit({ type: 'JACKPOT_ORB_LAND', position, tier }))
+  }
+
+  function land(symbols: OrbLanding[]) {
+    let at = Math.max(now(), nextOrbAt)
     for (const symbol of symbols) {
-      const { position } = symbol
-      if ('lantern' in symbol) {
-        schedule(Math.max(0, at - now()), () => {
-          reveal(position)
-          emit({ type: 'LANTERN_LAND', position })
-        })
-        revealEndsAt = Math.max(revealEndsAt, at + 195)
-        at += 110
-        continue
-      }
-      const { tier } = symbol
-      const pitch = 2 ** (Math.min(pitchStep++, 6) / 24)
-      const impact = holdAndSpin || Boolean(tier)
+      const { position, tier } = symbol
       schedule(Math.max(0, at - now()), () => {
         reveal(position)
-        emit({ type: 'GOLD_ORB_LAND', position, pitch, ...(impact ? { impact: true } : {}) })
+        chime(symbol)
       })
-      if (tier) schedule(Math.max(0, at + 155 - now()), () => emit({ type: 'JACKPOT_ORB_LAND', position, tier }))
       revealEndsAt = at + (tier ? 390 : 275)
       at += tier ? 390 : holdAndSpin ? 205 : 165
     }
@@ -78,8 +73,16 @@ export function createRoundCues({
       if (stopped.has(reel)) return false
       stopped.add(reel)
       showStopped()
+      for (const symbol of symbols) reveal(symbol.position)
       emit({ type: 'REEL_STOP', reel })
-      if (symbols.length) land(symbols, 45)
+      const orbs = symbols.filter((symbol): symbol is OrbLanding => !('lantern' in symbol))
+      stoppedOrbs += orbs.length
+      // Count only reels the player has seen. Every moving reel could still supply three orbs.
+      if (orbs.length && stoppedOrbs + (REELS - stopped.size) * ROWS >= BONUS.triggerCount) {
+        const landing = orbs.find(orb => orb.tier) ?? orbs[0]
+        chime(landing)
+        if (landing.tier) revealEndsAt = Math.max(revealEndsAt, now() + 285)
+      }
       return true
     },
     land,

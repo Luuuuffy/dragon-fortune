@@ -118,6 +118,7 @@ async function verifyBonuses(browser: Browser, mobile: boolean) {
     assert.equal(await page.locator('.locked').count(), 7)
     for (let turn = 2; turn <= 4; turn++) {
       await activate('Respin')
+      if (turn === 2) await activate('Stop')
       await page.waitForFunction(({ key, turn }) => {
         const round = JSON.parse(localStorage.getItem(key)!).round
         return turn === 4 ? round.phase === 'BONUS_RESULT' : round.phase === 'BONUS_READY' && round.bonus.turn === turn
@@ -157,11 +158,58 @@ async function verifyBonuses(browser: Browser, mobile: boolean) {
   }
 }
 
+async function verifyReelChanges(browser: Browser) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
+  try {
+    await initialize(page)
+    await button(page, 'Settings').tap()
+    await page.getByLabel('Animation speed').selectOption('0.75')
+    await page.waitForFunction(key => JSON.parse(localStorage.getItem(key)!).settings.speed === 0.75, SAVE_KEY)
+    await button(page, 'Close').tap()
+    await button(page, 'Bet size 1').tap()
+    await button(page, '5').tap()
+    await button(page, 'Bet size 5').waitFor()
+    await button(page, 'Denomination 1¢').tap()
+    await button(page, '10¢').tap()
+    await button(page, 'Denomination 10¢').waitFor()
+    assert.equal((await read(page)).betting.betSize, 1)
+    assert.equal(await page.locator('.orb-value').textContent(), 'RM0.80')
+    await button(page, 'Bet size 1').tap()
+    await button(page, '2').tap()
+    await button(page, 'Bet size 2').waitFor()
+    assert.equal(await page.locator('.orb-value').textContent(), 'RM1.60')
+
+    await chooseScenario(page, 'lanternBoth')
+    await button(page, 'Spin').tap()
+    await button(page, 'Stop').waitFor()
+    const pending = await read(page)
+    assert.equal(pending.round.phase, 'SPINNING')
+    assert(await page.locator('.reel-strip .reel-cell').evaluateAll(cells =>
+      cells.length > 0 && cells.every(cell => cell.childElementCount === 1)))
+    await page.waitForFunction(() => document.querySelector('.reel')?.classList.contains('stopped'))
+    const firstReel = page.locator('.reel').first()
+    assert.deepEqual(await firstReel.locator('.orb-value').allTextContents(), ['RM3.20', 'RM3.20'])
+    assert.equal(await firstReel.locator('.symbol-lantern').count(), 1)
+    assert((await page.locator('.reel.spinning').count()) > 0)
+    await button(page, 'Stop').tap()
+    await waitForPhase(page, 'FREE_INTRO')
+    const stopped = await read(page)
+    assert.deepEqual(stopped.board, pending.round.spin.board)
+    assert.deepEqual(stopped.boardOrbs, pending.round.orbs)
+    assert.equal(stopped.stats.spins, 1)
+    assert.equal(stopped.stats.wagered, 160)
+    console.log('PASS denomination reset, MYR orb faces, visible landing symbols, and touch fast stop')
+  } finally {
+    await page.close()
+  }
+}
+
 try {
   const browser = await chromium.launch({ channel: process.env.DRAGON_FORTUNE_BROWSER_CHANNEL })
   try {
     console.log(`Browser ${browser.version()} at ${url}`)
     for (const input of ['mouse', 'keyboard', 'touch'] as const) await verifyTwoTabs(browser, input)
+    await verifyReelChanges(browser)
     await verifyBonuses(browser, false)
     await verifyBonuses(browser, true)
   } finally {

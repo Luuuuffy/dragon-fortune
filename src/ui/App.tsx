@@ -3,14 +3,14 @@ import {
   BookOpen, ChevronDown, CircleHelp, Coins as CoinIcon, Grid3X3, Layers3,
   Settings as SettingsIcon, Volume2, VolumeX,
 } from 'lucide-react'
-import { CREDIT_PAYTABLE_VERSION, JACKPOT_TIERS, calculateJackpots, credits, denominationLabel, money, totalBetSen } from '../game/config'
+import { CREDIT_PAYTABLE_VERSION, JACKPOT_TIERS, REELS, calculateJackpots, credits, denominationLabel, money, totalBetSen } from '../game/config'
 import { SCENARIOS, secureRandom } from '../game/engine'
 import type { Scenario } from '../game/engine'
 import { completeHoldCollection, lastWinSen, spinJackpots } from '../game/session'
 import { applyRoundIntent, roundIntent, roundIntentKey } from '../game/roundIntent'
 import type { RoundIntent } from '../game/roundIntent'
 import { useSession } from '../game/useSession'
-import { play, unlockAudio } from './audio'
+import { play, playRoundCue, unlockAudio } from './audio'
 import { createSpinId } from './spinId'
 import { Bankroll } from './Bankroll'
 import { Coins, ResultBreakdown, winLabel } from './Celebration'
@@ -69,6 +69,10 @@ export function App() {
     unlockAudio()
     if (await action(previous => applyRoundIntent(previous, selected, secureRandom, createSpinId, developer ? scenario : undefined))) {
       if (selected.kind === 'continue') return
+      if (selected.kind === 'stop-spin' || selected.kind === 'stop-respin') {
+        playRoundCue({ type: 'REEL_STOP', reel: REELS - 1 }, settings)
+        return
+      }
       if (selected.kind === 'spin') setScenario(undefined)
       play('spin', settings)
     }
@@ -85,8 +89,8 @@ export function App() {
     return () => window.removeEventListener('keydown', handle)
   }, [activate, intent])
 
-  const buttonLabel = freeSpins ? 'Auto play' : continueId ? 'Continue' : ready ? 'Respin' :
-    round.phase === 'SPINNING' || round.phase === 'BONUS_RESPIN' ? 'Spinning' :
+  const buttonLabel = round.phase === 'SPINNING' || round.phase === 'BONUS_RESPIN' ? 'Stop' :
+    freeSpins ? 'Auto play' : continueId ? 'Continue' : ready ? 'Respin' :
     holdResult ? 'Collecting' : 'Spin'
   const status = lineWin ? `${winLabel(lineWin)} · ${lineWin.lines.length} winning ${lineWin.lines.length === 1 ? 'line' : 'lines'}`
     : round.phase === 'SPINNING' ? animation.anticipation ? 'Gold orbs in play' : 'Reels spinning'

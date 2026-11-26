@@ -10,7 +10,7 @@ import { LANTERN } from '../game/lanternConfig'
 import type { Betting, JackpotPrizes, PaytableVersion, SymbolId } from '../game/config'
 import { SCENARIOS, orbTypeProbabilities } from '../game/engine'
 import type { Scenario } from '../game/engine'
-import { freeSpinsWin, resetGame, resetStats, selectBetting, spinJackpots } from '../game/session'
+import { freeSpinsWin, resetGame, resetStats, selectBetting, selectDenomination, spinJackpots } from '../game/session'
 import type { Session, Settings } from '../game/session'
 import { Symbol } from './Symbol'
 
@@ -94,14 +94,13 @@ function Paytable({ betting, version, prizes }: { betting: Betting; version: Pay
     </ul>
     <p>Paying symbols match from the first reel. On reels 2–5, one to three Panda Wilds can stack and substitute for standard paying symbols. Each active line pays its highest qualifying combination.</p>
     <h3>Hold & Spin prizes</h3>
-    <p>Six or more Gold Orbs start the feature. A 1× orb pays the total bet for the triggering spin.
-      Orb faces show credits, or the MYR amount at the RM1 and RM2 denominations.</p>
+    <p>Six or more Gold Orbs start the feature. Orb faces show virtual MYR. Each ordinary orb pays the triggering spin’s total bet × its multiplier.</p>
     {designB && <p>Higher Total Credits Wagered (Bet Size × Active Lines) makes larger ordinary multipliers more likely.
       These are the chances per ordinary orb for the current <strong>{wagerCredits(betting)}-credit</strong> wager.</p>}
     <ul className="orb-values">
       {weights.map(([multiplier, weight]) => {
         const orb = priceWagerOrb(wager, multiplier)
-        return <li key={multiplier}><b>{multiplier}×</b> {orbFaceLabel(orb)}{!orb.displayMyr && ' credits'}<br/>{percent(weight / totalWeight)}</li>
+        return <li key={multiplier}><b>{multiplier}×</b> {orbFaceLabel(orb)}<br/>{percent(weight / totalWeight)}</li>
       })}
     </ul>
     <ul className="orb-values">
@@ -143,9 +142,9 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
   }
   return <Modal close={close} title={titles[panel]} className={panel === 'paylines' ? 'line-modal' : ''}>
     {panel === 'denomination' && <>
-      <p>Choose how much one credit is worth.</p>
+      <p>Choose how much one credit is worth. Changing denomination resets Bet Size to 1.</p>
       <div className="choice-list">{DENOMINATIONS_SEN.map(value => <button aria-pressed={denominationSen === value} key={value} disabled={!idle}
-        onClick={() => void choose(previous => selectBetting(previous, { denominationSen: value }))}>{denominationLabel(value)}</button>)}</div>
+        onClick={() => void choose(previous => selectDenomination(previous, value))}>{denominationLabel(value)}</button>)}</div>
     </>}
     {panel === 'betSize' && <>
       <p>Choose the number of credits wagered per active line.</p>
@@ -190,6 +189,7 @@ export function Panels({ panel, open, close, session, action, commit, preview, s
     {panel === 'help' && <>
       <h3>Spin the reels</h3>
       <p>Choose a denomination, bet size and line count. One credit is worth the selected denomination. Your total bet is credits per line × active lines × denomination. Press Spin or Space to play. Matches count from the first reel along an active path. Tiger pays from two matches and other paying symbols from three. Panda Wilds can complete a match.</p>
+      <p>Press Stop or Space while the reels are moving to see the result immediately.</p>
       <p>Paid spins and Free Spins multiply base line credits by Bet Size. Across all supported wagers, the theoretical return is {designBRtp}.</p>
       <h3>Hold & Spin</h3>
       <p>Land six or more Gold Orbs to start with three respins. Orbs stay in their original cells and only empty positions respin. Each newly filled cell resets the counter to three. The round ends at zero respins or a full board.</p>

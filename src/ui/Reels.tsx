@@ -72,10 +72,10 @@ export function Reels({ board, boardOrbs, target, stopped, duration, bonus, base
             style={{ '--roll-time': `${duration[reel]}ms`, '--strip-steps': strip.length - ROWS } as CSSProperties}>
             {strip.map((symbol, index) => {
               const previousRow = index - (strip.length - ROWS)
-              const orb = previousRow >= 0 ? boardOrbs[cellAt(reel, previousRow)] : null
+              const orb = previousRow >= 0 ? boardOrbs[cellAt(reel, previousRow)]
+                : index < ROWS ? baseOrbs?.[cellAt(reel, index)] : null
               return <div className="reel-cell" key={index}>
-                {orb ? <OrbSymbol orb={orb}/>
-                  : (reducedReels || index >= ROWS || (symbol !== 'orb' && symbol !== 'lantern')) && <Symbol symbol={symbol}/>}
+                {orb ? <OrbSymbol orb={orb}/> : <Symbol symbol={symbol}/>}
               </div>
             })}
           </div> : Array.from({ length: ROWS }, (_, row) => {
@@ -83,16 +83,14 @@ export function Reels({ board, boardOrbs, target, stopped, duration, bonus, base
             const orb = bonus ? bonus[index] : baseOrbs ? baseOrbs[index] : boardOrbs[index]
             const revealed = landedSymbols.includes(index)
             const lantern = visible[index] === 'lantern' && !bonus
-            const waiting = target && (visible[index] === 'orb' || lantern) && !revealed
             const cellSpins = respinning && !orb && (!stoppedCells.includes(index) || Boolean(nextBonusOrbs?.[index]))
             const classes = ['reel-cell', winningCells.has(index) && !bonus && 'winning-cell',
-              bonus && orb && 'locked', revealed && (lantern ? 'new-lantern' : 'new-orb'),
+              bonus && orb && 'locked', bonus && revealed && 'new-orb',
               lantern && highlightLanterns && 'scatter-cell', bonus && !orb && 'empty',
               cellSpins && 'respinning'].filter(Boolean).join(' ')
             return <div key={index} className={classes} data-orb-position={bonus && orb ? index : undefined}
               style={{ '--cell-index': index } as CSSProperties}>
-              {waiting ? null
-                : orb ? <><OrbSymbol orb={orb}/>
+              {orb ? <><OrbSymbol orb={orb}/>
                   {bonus && revealed && <span className="orb-burst" aria-hidden="true">
                     {Array.from({ length: 8 }, (_, ray) => <i key={ray} style={{ '--ray': `${ray * 45}deg` } as CSSProperties}/>)}
                   </span>}

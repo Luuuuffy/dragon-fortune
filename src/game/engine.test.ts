@@ -162,7 +162,8 @@ describe('Hold & Spin', () => {
     expect(random).toHaveBeenCalledTimes(1)
   })
 
-  it.each([[1, 100, 1, 100, 100, '100'], [50, 900, 3, 54, 2700, '54'],
+  it.each([[1, 8, 1, 8, 8, 'RM0.08'], [10, 80, 1, 8, 80, 'RM0.80'], [10, 160, 1, 16, 160, 'RM1.60'],
+    [1, 100, 1, 100, 100, 'RM1'], [50, 900, 3, 54, 2700, 'RM27'],
     [100, 800, 1, 8, 800, 'RM8'], [200, 1600, 5, 40, 8000, 'RM80']] as const)(
     'prices denomination %i, total wager %i sen and multiplier %i exactly', (denomination, bet, multiplier, value, payoutSen, face) => {
       const orb = calculateOrbPrize(denomination, bet, multiplier)
